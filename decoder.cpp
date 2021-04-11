@@ -1,5 +1,5 @@
 // Aseprite PSD Library
-// Copyright (C) 2019 Igara Studio S.A.
+// Copyright (C) 2019-2021 Igara Studio S.A.
 //
 // This file is released under the terms of the MIT license.
 // Read LICENSE.txt for more information.
@@ -8,6 +8,7 @@
 #include "psd_details.h"
 
 #include <cassert>
+#include <stdexcept>
 
 #undef TRACE
 #define TRACE(...)
