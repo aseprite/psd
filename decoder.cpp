@@ -8,6 +8,7 @@
 #include "psd_details.h"
 
 #include <cassert>
+#include <cinttypes>
 #include <stdexcept>
 
 #undef TRACE
@@ -209,10 +210,10 @@ bool Decoder::readLayersAndMask()
           ++length;
 
         TRACE(" tag block %c%c%c%c with length=" PRId64 " (" PRId64 ")\n",
-              ((key>>24)&0xff),
-              ((key>>16)&0xff),
-              ((key>>8)&0xff),
-              ((key)&0xff),
+              ((((int)key)>>24)&0xff),
+              ((((int)key)>>16)&0xff),
+              ((((int)key)>>8)&0xff),
+              (((int)key)&0xff),
               length, origLength);
 
         for (int i=0; i<length; ++i) {
