@@ -1,6 +1,6 @@
 # Aseprite PSD Library
 
-[![build](https://github.com/aseprite/psd/workflows/build/badge.svg)](https://github.com/aseprite/psd/actions?query=workflow%3Abuild)
+[![build](https://github.com/aseprite/psd/actions/workflows/build.yml/badge.svg)](https://github.com/aseprite/psd/actions/workflows/build.yml)
 [![MIT Licensed](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.txt)
 
 Experimental and *Work-In-Progress* C++ library to read/write PSD files.
