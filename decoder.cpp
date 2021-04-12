@@ -166,7 +166,7 @@ bool Decoder::readLayersAndMask()
   uint64_t length = read32or64Length();
   uint64_t beg = m_file->tell();
 
-  TRACE("layers length = %d\n", (int)length);
+  TRACE("layers length=%" PRId64 "\n", length);
 
   // Read layers info section
   readLayersInfo(layers);
@@ -209,7 +209,7 @@ bool Decoder::readLayersAndMask()
         if (length & 1)
           ++length;
 
-        TRACE(" tag block %c%c%c%c with length=" PRId64 " (" PRId64 ")\n",
+        TRACE(" tag block %c%c%c%c with length=%" PRId64 " (%" PRId64 ")\n",
               ((((int)key)>>24)&0xff),
               ((((int)key)>>16)&0xff),
               ((((int)key)>>8)&0xff),
@@ -283,7 +283,7 @@ bool Decoder::readImageData()
 bool Decoder::readLayersInfo(LayersInformation& layers)
 {
   uint64_t length = read32or64Length();
-  TRACE("Layers Info length=%d\n", (int)length);
+  TRACE("Layers Info length=%" PRId64 "\n", length);
 
   // Empty layers section
   if (length == 0)
@@ -300,8 +300,8 @@ bool Decoder::readLayersInfo(LayersInformation& layers)
     firstChannelIsTransparency = true;
   }
 
-  TRACE("layers count=%d length=%d firstChannelIsTransparency=%d\n",
-        nlayers, (int)length, firstChannelIsTransparency);
+  TRACE("layers count=%d length=%" PRId64 " firstChannelIsTransparency=%d\n",
+        nlayers, length, firstChannelIsTransparency);
 
   // Read layers info
   for (uint16_t i=0; i<uint16_t(nlayers); ++i) {
@@ -422,7 +422,7 @@ bool Decoder::readLayerRecord(LayersInformation& layers,
 bool Decoder::readGlobalMaskInfo(LayersInformation& layers)
 {
   uint64_t length = read32();
-  TRACE("Global mask info length=%llu\n", length);
+  TRACE("Global mask info length=%" PRId64 "\n", length);
   if (length == 0)
     return true;
 
