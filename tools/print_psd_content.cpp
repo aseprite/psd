@@ -74,11 +74,13 @@ public:
       "    nchannels=%zu\n"
       "    width=%d\n"
       "    height=%d\n"
-      "    depth=%d (bits per channel)\n",
+      "    depth=%d (bits per channel)\n"
+      "    compression=%d\n",
       img.channels.size(),
       img.width,
       img.height,
-      img.depth);
+      img.depth,
+      (int)img.compressionMethod);
   }
 
   void onImageScanline(const psd::ImageData& img,
