@@ -90,9 +90,25 @@ bool Decoder::readColorModeData()
   data.length = read32();
 
   TRACE("Color Mode Data length=%d\n", data.length);
+  // only indexed and duotone have color mode, all other modes 
+  // have their length set to 0
 
-  if (m_header.colorMode == ColorMode::Indexed &&
-      data.length == 768) {
+  if (data.length == 0) {
+    if (m_header.colorMode == ColorMode::Indexed
+      || m_header.colorMode == ColorMode::Duotone) {
+      TRACE("The color mode cannot be indexed/duotone and have size zero\n",
+            "Must be a corrupt file");
+      return false;
+    }
+    else
+      return m_file->ok();
+  }
+
+  if (m_header.colorMode == ColorMode::Indexed) {
+    if (data.length != 768) {
+      TRACE("A corrupt indexed file");
+      return false;
+    }
     data.colors.resize(256);
     for (int i=0; i<256; ++i) data.colors[i].r = read8();
     for (int i=0; i<256; ++i) data.colors[i].g = read8();
@@ -123,7 +139,7 @@ bool Decoder::readImageResources()
   while (length > 0) {
     const uint32_t resBegin = m_file->tell();
 
-    uint32_t magic = read32();
+    const uint32_t magic = read32();
     if (magic != PSD_IMAGE_BLOCK_MAGIC_NUMBER)
       break;
 
@@ -282,7 +298,7 @@ bool Decoder::readImageData()
 
 bool Decoder::readLayersInfo(LayersInformation& layers)
 {
-  uint64_t length = read32or64Length();
+  const uint64_t length = read32or64Length();
   TRACE("Layers Info length=%" PRId64 "\n", length);
 
   // Empty layers section
@@ -369,7 +385,7 @@ bool Decoder::readLayerRecord(LayersInformation& layers,
   }
 
   // Blend mode signature
-  uint32_t magic = read32();
+  const uint32_t magic = read32();
   TRACE("LAYER magic=%c%c%c%c\n",
          ((magic >> 24) & 255),
          ((magic >> 16) & 255),
@@ -388,12 +404,12 @@ bool Decoder::readLayerRecord(LayersInformation& layers,
          ((bm >> 8) & 255),
          ((bm) & 255));
 
-  layerRecord.clipping = read8(); // clipping (0=base, 1=non-base)ad8();
+  layerRecord.clipping = read8(); // clipping (0=base, 1=non-base);
   layerRecord.flags = read8();
   read8();                      // filler (zero)
 
-  uint32_t length = read32();
-  uint32_t beforeDataPos = m_file->tell();
+  const uint32_t length = read32();
+  const uint32_t beforeDataPos = m_file->tell();
 
   // Read mask data
   uint32_t maskLength = read32();
@@ -652,7 +668,8 @@ bool Decoder::readImage(const ImageData& img)
 
         }
         break;
-
+      // 2021-09-30 I have began the implementations of this on a separate
+      // branch, hopefully something concrete can be got done before the weekend
       case CompressionMethod::ZIPWithoutPrediction:
         // TODO
         break;
