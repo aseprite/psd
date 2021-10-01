@@ -36,7 +36,7 @@ namespace psd {
 
   const char* color_mode_string(const ColorMode colorMode);
 
-  struct FileHeader {
+  struct PSDHeader {
     Version version;
     int nchannels;
     int width;
@@ -278,7 +278,7 @@ namespace psd {
   class DecoderDelegate {
   public:
     virtual ~DecoderDelegate() { }
-    virtual void onFileHeader(const FileHeader& fileHeader) { }
+    virtual void onFileHeader(const PSDHeader& fileHeader) { }
     virtual void onColorModeData(const ColorModeData& data) { }
     virtual void onImageResources(const ImageResources& res) { }
     virtual void onImageResource(const ImageResource& res) { }
@@ -302,7 +302,7 @@ namespace psd {
     Decoder(FileInterface* file,
             DecoderDelegate* delegate);
 
-    const FileHeader& fileHeader() const { return m_header; }
+    const PSDHeader& fileHeader() const { return m_header; }
 
     bool readFileHeader();
     bool readColorModeData();
@@ -327,7 +327,42 @@ namespace psd {
 
     DecoderDelegate* m_delegate;
     FileInterface* m_file;
-    FileHeader m_header;
+    PSDHeader m_header;
+  };
+
+  class EncoderDelegate {
+  public:
+    virtual void onHeaderWritten(const PSDHeader& header){}
+    virtual void onColorModeWritten(const ColorModeData& colorModeData){}
+    virtual void onImageResourcesWritten(const ImageResources& imageResources){}
+  };
+
+  class Encoder {
+  public:
+    Encoder(FileInterface* file,
+            EncoderDelegate* delegate = nullptr);
+    bool writePSDHeader(const PSDHeader& header);
+    bool writeColorModeData(const ColorModeData& colorModeData);
+    bool writeImageResources(const ImageResources& imageResources);
+
+  private:
+    void write8(const uint8_t value);
+    void write16(const uint16_t value);
+    void write32(const uint32_t value);
+    void write64(const uint64_t value );
+    void write32or64Length(const uint64_t value);
+    void writeRawData(const uint8_t* const data, 
+                        std::size_t const length);
+    void writePascalString(const std::string& str, const int alignment);
+
+    std::size_t imageResourceBlockSize(const ImageResource&, 
+        const int stringAlignment);
+    std::size_t pascalStringSize(const std::string& str, 
+        const int stringAlignment);
+
+    FileInterface* m_file;
+    EncoderDelegate* m_delegate;
+    PSDHeader m_header;
   };
 
   bool decode_psd(FileInterface* file, DecoderDelegate* delegate);

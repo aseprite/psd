@@ -13,7 +13,7 @@ class Delegate : public psd::DecoderDelegate {
 public:
   psd::LayersInformation layers;
 
-  void onFileHeader(const psd::FileHeader& fileHeader) override {
+  void onFileHeader(const psd::PSDHeader& fileHeader) override {
     std::printf(
       "File Header\n"
       "  version=%d\n"
@@ -104,8 +104,7 @@ public:
 
 };
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv){
   if (argc < 2) {
     std::printf("Usage: %s file.psd\n", argv[0]);
     return 1;
@@ -124,12 +123,12 @@ int main(int argc, char** argv)
 
   for (auto& layer : delegate.layers.layers)
     std::printf("Layer name='%s' opacity=%d blendmode=%c%c%c%c\n",
-                layer.name.c_str(),
-                layer.opacity,
-                (int(layer.blendMode) >> 24) & 255,
-                (int(layer.blendMode) >> 16) & 255,
-                (int(layer.blendMode) >> 8) & 255,
-                int(layer.blendMode) & 255);
+      layer.name.c_str(),
+      layer.opacity,
+      (int(layer.blendMode) >> 24) & 255,
+      (int(layer.blendMode) >> 16) & 255,
+      (int(layer.blendMode) >> 8) & 255,
+      int(layer.blendMode) & 255);
 
   std::fclose(f);
 }

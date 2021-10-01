@@ -18,6 +18,7 @@ include_directories(.)
 
 add_library(psd
   decoder.cpp
+  encoder.cpp
   image_resources.cpp
   psd.cpp
   stdio.cpp)
