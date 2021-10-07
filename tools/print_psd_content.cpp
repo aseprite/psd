@@ -9,18 +9,6 @@
 #include <cassert>
 #include <cstdio>
 
-const uint32_t rgba_r_shift = 0;
-const uint32_t rgba_g_shift = 8;
-const uint32_t rgba_b_shift = 16;
-const uint32_t rgba_a_shift = 24;
-
-inline uint32_t rgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
-    return ((r << rgba_r_shift) |
-        (g << rgba_g_shift) |
-        (b << rgba_b_shift) |
-        (a << rgba_a_shift));
-}
-
 class Delegate : public psd::DecoderDelegate {
 public:
   psd::LayersInformation layers;
@@ -82,14 +70,7 @@ public:
 
   void onColorModeData(psd::ColorModeData const& colorMode) {
     if (!colorMode.colors.empty()) {
-      std::printf("Indexed image\n");
-      for (int i = 0; i < colorMode.colors.size();) {
-        for (int j = 0; j < 16 && i < colorMode.colors.size(); ++j, ++i) {
-          auto& palette = colorMode.colors[i];
-          std::printf("%d ", rgba(palette.r, palette.g, palette.b, 255));
-        }
-        std::printf("\n");
-      }
+      colorModeData = colorMode;
     }
   }
 

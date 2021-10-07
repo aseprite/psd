@@ -3,7 +3,7 @@
 
 function(add_psd_tool name)
   add_executable(${name} ${name}.cpp)
-  target_link_libraries(${name} psd)
+  target_link_libraries(${name} psd-lib)
 endfunction()
 
 add_psd_tool(print_psd_content)

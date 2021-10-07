@@ -16,7 +16,7 @@ endif()
 
 include_directories(.)
 
-add_library(psd
+add_library(psd-lib
   decoder.cpp
   image_resources.cpp
   psd.cpp
