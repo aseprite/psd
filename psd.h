@@ -12,6 +12,10 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <memory>
+
+#undef TRACE
+#define TRACE std::printf
 
 namespace psd {
 
@@ -36,7 +40,7 @@ namespace psd {
 
   const char* color_mode_string(const ColorMode colorMode);
 
-  struct PSDHeader {
+  struct FileHeader {
     Version version;
     int nchannels;
     int width;
@@ -187,6 +191,32 @@ namespace psd {
     vstk = PSD_DEFINE_DWORD('v', 's', 't', 'k'),
   };
 
+  enum class OSTypeKey : uint32_t {
+    Reference = PSD_DEFINE_DWORD('o', 'b', 'j', ' '),
+    Descriptor = PSD_DEFINE_DWORD('O', 'b', 'j', 'c'),
+    List = PSD_DEFINE_DWORD('V', 'l', 'L', 's'),
+    Double = PSD_DEFINE_DWORD('d', 'o', 'u', 'b'),
+    UnitFloat = PSD_DEFINE_DWORD('U', 'n', 't', 'F'),
+    String = PSD_DEFINE_DWORD('T', 'E', 'X', 'T'),
+    Enumerated = PSD_DEFINE_DWORD('e', 'n', 'u', 'm'),
+    Long = PSD_DEFINE_DWORD('l', 'o', 'n', 'g'),
+    LargeInteger = PSD_DEFINE_DWORD('c', 'o', 'm', 'p'),
+    Boolean = PSD_DEFINE_DWORD('b', 'o', 'o', 'l'),
+    GlobalObject = PSD_DEFINE_DWORD('G', 'l', 'b', 'O'),
+    ClassType = PSD_DEFINE_DWORD('t', 'y', 'p', 'e'),
+    GlobalClass = PSD_DEFINE_DWORD('G', 'l', 'b', 'C'),
+    Alias = PSD_DEFINE_DWORD('a', 'l', 'i', 's'),
+    RawData = PSD_DEFINE_DWORD('t', 'd', 't', 'a'),
+
+    RefProperty = PSD_DEFINE_DWORD('p', 'r', 'o', 'p'),
+    RefClass = PSD_DEFINE_DWORD('C', 'l', 's', 's'),
+    RefEnum = PSD_DEFINE_DWORD('E', 'n', 'm', 'r'),
+    RefOffset = PSD_DEFINE_DWORD('r', 'e', 'l', 'e'),
+    RefIdentifier = PSD_DEFINE_DWORD('I', 'd', 'n', 't'),
+    RefIndex = PSD_DEFINE_DWORD('i', 'd', 'n', 'x'),
+    RefName = PSD_DEFINE_DWORD('n', 'a', 'm', 'e'),
+  };
+
   enum class ChannelID : int {
     Red = 0,
     Green = 1,
@@ -200,6 +230,180 @@ namespace psd {
   struct Channel {
     ChannelID channelID;
     uint64_t length;
+  };
+  
+  struct OSType {
+    virtual OSTypeKey type() const = 0;
+    ~OSType(){}
+  };
+
+  struct OSTypeClassMetaType {
+    uint32_t keyClassID = 0;
+    std::string name;
+  };
+
+  struct OSTypeUnitFloat: OSType {
+    enum class Unit {
+      Angle = PSD_DEFINE_DWORD('#', 'A', 'n', 'g'), // base degrees
+      Density = PSD_DEFINE_DWORD('#', 'R', 's', 'l'), // base per inch
+      Distance = PSD_DEFINE_DWORD('#', 'R', 'l', 't'), // base 72ppi
+      None = PSD_DEFINE_DWORD('#', 'N', 'n', 'e'), // coerced
+      Percent = PSD_DEFINE_DWORD('#', 'P', 'r', 'c'), // unit value
+      Pixel = PSD_DEFINE_DWORD('#', 'P', 'x', 'l'), // tagged unit value
+    };
+
+    Unit   unit;
+    double value = 0.0;
+
+    OSTypeUnitFloat(Unit u, double v): unit{u}, value{v}{}
+    OSTypeKey type() const override {
+      return OSTypeKey::UnitFloat;
+    }
+  };
+
+  struct OSTypeDouble: OSType {
+    double value = 0.0;
+
+    OSTypeDouble(double v): value{v}{}
+    OSTypeKey type() const override {
+      return OSTypeKey::Double;
+    }
+  };
+
+  struct OSTypeClass: OSType {
+    std::wstring        className;
+    OSTypeClassMetaType meta;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::ClassType;
+    }
+  };
+
+  struct OSTypeString: OSType {
+    std::wstring value;
+
+    OSTypeString(std::wstring const &v): value{v}{}
+    OSTypeKey type() const override {
+      return OSTypeKey::String;
+    }
+  };
+
+  struct OSTypeEnumeratedRef : OSType {
+    std::wstring        refClassID;
+    OSTypeClassMetaType classID;
+    OSTypeClassMetaType typeID;
+    OSTypeClassMetaType enumValue;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::RefEnum;
+    }
+  };
+
+  struct OSTypeOffset: OSType {
+    std::wstring        offsetName;
+    OSTypeClassMetaType classID;
+    uint32_t            value = 0;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::RefOffset;
+    }
+  };
+
+  struct OSTypeBoolean: OSType {
+    bool value = false;
+
+    OSTypeBoolean(bool v): value{v}{}
+    OSTypeKey type() const override {
+      return OSTypeKey::Boolean;
+    }
+  };
+
+  struct OSTypeAlias: OSType {
+    OSTypeKey type() const override {
+      return OSTypeKey::Alias;
+    }
+  };
+
+  struct OSTypeList: OSType {
+    std::vector<std::unique_ptr<OSType>> values;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::List;
+    }
+    ~OSTypeList() {
+      values.clear();
+    }
+  };
+
+  struct OSTypeLargeInt: OSType {
+    std::uint64_t value = 0;
+
+    OSTypeLargeInt(uint64_t v): value{v}{}
+    OSTypeKey type() const override {
+      return OSTypeKey::LargeInteger;
+    }
+  };
+
+  struct OSTypeInt: OSType {
+    std::uint32_t value = 0;
+
+    OSTypeInt(uint32_t v): value{v}{}
+    OSTypeKey type() const override {
+      return OSTypeKey::Long;
+    }
+  };
+
+  struct OSTypeRawData: OSType {
+    std::vector<uint8_t> value;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::RawData;
+    }
+  };
+
+  struct OSTypeProperty : OSType {
+    std::wstring propName;
+    OSTypeClassMetaType classID;
+    OSTypeClassMetaType keyID;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::RefProperty;
+    }
+  };
+
+  struct OSTypeDescriptor: OSType {
+    std::wstring descriptorName;
+    OSTypeClassMetaType classId;
+    std::vector<std::unique_ptr<OSType>> descriptors;
+
+    OSTypeDescriptor() = default;
+    OSTypeDescriptor(std::wstring const &str)
+      : descriptorName{str}{}
+
+    OSTypeKey type() const override {
+      return OSTypeKey::Descriptor;
+    }
+
+    ~OSTypeDescriptor() {
+      descriptors.clear();
+    }
+  };
+
+  struct OSTypeEnum : OSType {
+    OSTypeClassMetaType typeID;
+    OSTypeClassMetaType enumValue;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::Enumerated;
+    }
+  };
+
+  struct OSTypeReference: OSType {
+    std::vector<std::unique_ptr<OSType>> refs;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::Reference;
+    }
   };
 
   struct LayerRecord {
@@ -278,7 +482,7 @@ namespace psd {
   class DecoderDelegate {
   public:
     virtual ~DecoderDelegate() { }
-    virtual void onFileHeader(const PSDHeader& fileHeader) { }
+    virtual void onFileHeader(const FileHeader& fileHeader) { }
     virtual void onColorModeData(const ColorModeData& data) { }
     virtual void onImageResources(const ImageResources& res) { }
     virtual void onImageResource(const ImageResource& res) { }
@@ -300,9 +504,9 @@ namespace psd {
   class Decoder {
   public:
     Decoder(FileInterface* file,
-            DecoderDelegate* delegate);
+            DecoderDelegate* delegate = nullptr);
 
-    const PSDHeader& fileHeader() const { return m_header; }
+    const FileHeader& fileHeader() const { return m_header; }
 
     bool readFileHeader();
     bool readColorModeData();
@@ -316,6 +520,16 @@ namespace psd {
                          LayerRecord& layerRecord);
     bool readGlobalMaskInfo(LayersInformation& layers);
     bool readImage(const ImageData& img);
+    std::unique_ptr<OSType> parseOsTypeVariable();
+    std::unique_ptr<OSType> parseReferenceType();
+    std::unique_ptr<OSType> parseDescriptor();
+    std::unique_ptr<OSType> parseListType();
+    std::unique_ptr<OSType> parseClassType();
+    std::unique_ptr<OSType> parseEnumeratedType();
+    std::unique_ptr<OSType> parseAliasType();
+    OSTypeClassMetaType parseDescrVariable();
+
+    std::wstring getUnicodeString();
 
     uint8_t read8() { return m_file->read8(); }
     uint16_t read16();
@@ -327,46 +541,10 @@ namespace psd {
 
     DecoderDelegate* m_delegate;
     FileInterface* m_file;
-    PSDHeader m_header;
-  };
-
-  class EncoderDelegate {
-  public:
-    virtual void onHeaderWritten(const PSDHeader& header){}
-    virtual void onColorModeWritten(const ColorModeData& colorModeData){}
-    virtual void onImageResourcesWritten(const ImageResources& imageResources){}
-  };
-
-  class Encoder {
-  public:
-    Encoder(FileInterface* file,
-            EncoderDelegate* delegate = nullptr);
-    bool writePSDHeader(const PSDHeader& header);
-    bool writeColorModeData(const ColorModeData& colorModeData);
-    bool writeImageResources(const ImageResources& imageResources);
-
-  private:
-    void write8(const uint8_t value);
-    void write16(const uint16_t value);
-    void write32(const uint32_t value);
-    void write64(const uint64_t value );
-    void write32or64Length(const uint64_t value);
-    void writeRawData(const uint8_t* const data, 
-                        std::size_t const length);
-    void writePascalString(const std::string& str, const int alignment);
-
-    std::size_t imageResourceBlockSize(const ImageResource&, 
-        const int stringAlignment);
-    std::size_t pascalStringSize(const std::string& str, 
-        const int stringAlignment);
-
-    FileInterface* m_file;
-    EncoderDelegate* m_delegate;
-    PSDHeader m_header;
+    FileHeader m_header;
   };
 
   bool decode_psd(FileInterface* file, DecoderDelegate* delegate);
-
 } // namespace psd
 
 #endif

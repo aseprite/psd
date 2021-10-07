@@ -11,9 +11,6 @@
 #include <cinttypes>
 #include <stdexcept>
 
-#undef TRACE
-#define TRACE(...)
-
 namespace psd {
 
 Decoder::Decoder(FileInterface* file,
@@ -144,13 +141,18 @@ bool Decoder::readImageResources()
       break;
 
     const uint16_t resID = read16();
+#ifdef _DEBUG
+    char const* resourceName = ImageResource::resIDString(resID);
+    std::printf("%s\n", resourceName);
+#endif // _DEBUG
+
     const std::string name = readPascalString(2);
     const uint32_t resLength = read32();
 
     ImageResource res;
     res.resourceID = resID;
     res.name = name;
-    if (resLength) {
+    if (resLength){
       res.data.resize(resLength);
       m_file->read(&res.data[0], resLength);
     }
@@ -168,7 +170,6 @@ bool Decoder::readImageResources()
     if (ImageResource::resIDHasDescriptor(resID)) {
       // TODO ...
     }
-
     length -= (resEnd - resBegin);
   }
   m_file->seek(end);
@@ -179,8 +180,8 @@ bool Decoder::readImageResources()
 bool Decoder::readLayersAndMask()
 {
   LayersInformation layers;
-  uint64_t length = read32or64Length();
-  uint64_t beg = m_file->tell();
+  const uint64_t length = read32or64Length();
+  const uint64_t beg = m_file->tell();
 
   TRACE("layers length=%" PRId64 "\n", length);
 
@@ -194,12 +195,12 @@ bool Decoder::readLayersAndMask()
   if (m_file->tell() < beg+length) {
     TRACE(" Tagged blocks\n");
 
-    while (m_file->tell() - (beg+length) > 4) {
-      uint32_t signature = read32(); // Magic ("8BIM" or "8B64")
+    while ((m_file->tell() - (beg+length)) > 4) {
+      const uint32_t signature = read32(); // Magic ("8BIM" or "8B64")
       if (signature == PSD_LAYER_INFO_MAGIC_NUMBER ||
           signature == PSD_LAYER_INFO_MAGIC_NUMBER2) {
-        LayerInfoKey key = static_cast<LayerInfoKey>(read32());
-        uint64_t length;
+        const LayerInfoKey key = static_cast<LayerInfoKey>(read32());
+        uint64_t dataLength;
 
         if ((m_header.version == Version::Psb) &&
             (key == LayerInfoKey::LMsk ||
@@ -215,15 +216,15 @@ bool Decoder::readLayersAndMask()
              key == LayerInfoKey::FEid ||
              key == LayerInfoKey::FXid ||
              key == LayerInfoKey::PxSD)) {
-          length = read64();
+          dataLength = read64();
         }
         else {
-          length = read32();
+          dataLength = read32();
         }
 
-        uint64_t origLength = length;
-        if (length & 1)
-          ++length;
+        uint64_t origLength = dataLength;
+        if (origLength & 1)
+          ++dataLength;
 
         TRACE(" tag block %c%c%c%c with length=%" PRId64 " (%" PRId64 ")\n",
               ((((int)key)>>24)&0xff),
@@ -232,15 +233,9 @@ bool Decoder::readLayersAndMask()
               (((int)key)&0xff),
               length, origLength);
 
-        for (int i=0; i<length; ++i) {
-          TRACE("   ");
-          for (int j=0; j<16 && i<length; ++j, ++i) {
-            int c = read8();
-            TRACE("%c", isgraph(c) ? c: '.');
-          }
-          TRACE("\n");
-        }
+        m_file->seek(m_file->tell() + dataLength);
       }
+      std::printf("\n");
     }
 
     // TODO
@@ -248,7 +243,7 @@ bool Decoder::readLayersAndMask()
 
   if (m_delegate)
     m_delegate->onLayersAndMask(layers);
-
+  
   m_file->seek(beg + length);
   return true;
 }
@@ -573,7 +568,8 @@ bool Decoder::readImage(const ImageData& img)
           for (int x=0; x<img.width; ) {
             if (img.depth == 1) {
               uint8_t byte = read8();
-              TRACE(" %d%d%d%d%d%d%d%d",
+              TRACE("%d %d%d%d%d%d%d%d%d",
+                    byte,
                     (byte & 0x80) >> 7,
                     (byte & 0x40) >> 6,
                     (byte & 0x20) >> 5,
@@ -668,8 +664,7 @@ bool Decoder::readImage(const ImageData& img)
 
         }
         break;
-      // 2021-09-30 I have began the implementations of this on a separate
-      // branch, hopefully something concrete can be got done before the weekend
+
       case CompressionMethod::ZIPWithoutPrediction:
         // TODO
         break;
