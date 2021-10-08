@@ -341,6 +341,9 @@ bool Decoder::readLayersInfo(LayersInformation& layers)
 
   // Read channel data of each layer
   for (auto& layerRecord : layers.layers) {
+    if(m_delegate)
+      m_delegate->onLayerSelected(layerRecord);
+
     for (auto& channel : layerRecord.channels) {
       const uint16_t compression = read16();
       const int width = layerRecord.width();
@@ -565,6 +568,10 @@ bool Decoder::readImage(const ImageData& img)
 
       case CompressionMethod::RawImageData:
         for (int y=0; y<img.height; ++y) {
+
+          std::vector<uint32_t> rawData;
+          rawData.reserve(img.width);
+
           for (int x=0; x<img.width; ) {
             if (img.depth == 1) {
               uint8_t byte = read8();
@@ -579,27 +586,34 @@ bool Decoder::readImage(const ImageData& img)
                     (byte & 0x02) >> 1,
                     (byte & 0x01));
               x += 8;
+              rawData.push_back(byte);
             }
             else if (img.depth == 8) {
               uint8_t byte = read8();
               TRACE(" %02x", byte);
               ++x;
+              rawData.push_back(byte);
             }
             else if (img.depth == 16) {
               uint16_t word = read16();
               TRACE(" %04x", word);
               ++x;
+              rawData.push_back(word);
             }
             else if (img.depth == 32) {
               uint32_t dword = read32();
               TRACE(" %08x", dword);
               ++x;
+              rawData.push_back(dword);
             }
             else {
               return false;
             }
           }
           TRACE("\n");
+
+          if(m_delegate)
+            m_delegate->onImageScanline(img, y, chanID, rawData);
         }
         break;
 
