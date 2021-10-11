@@ -243,7 +243,7 @@ bool Decoder::readLayersAndMask()
 
   if (m_delegate)
     m_delegate->onLayersAndMask(layers);
-  
+
   m_file->seek(beg + length);
   return true;
 }
@@ -266,6 +266,10 @@ bool Decoder::readImageData()
   switch (m_header.nchannels) {
     case 1:
       img.channels.push_back(ChannelID::Alpha);
+      break;
+    case 2:
+      img.channels.push_back(ChannelID::TransparencyMask);
+      img.channels.push_back(ChannelID::Red);
       break;
     case 3:
       img.channels.push_back(ChannelID::Red);
@@ -343,11 +347,12 @@ bool Decoder::readLayersInfo(LayersInformation& layers)
   for (auto& layerRecord : layers.layers) {
     if(m_delegate)
       m_delegate->onLayerSelected(layerRecord);
-
+    uint32_t fileBegin = m_file->tell();
     for (auto& channel : layerRecord.channels) {
       const uint16_t compression = read16();
       const int width = layerRecord.width();
       const int height = layerRecord.height();
+      const uint32_t fileEnd = fileBegin + channel.length;
 
       TRACE("Reading channel data for layer='%s' channel=%d compression:%d width=%d height=%d\n",
             layerRecord.name.c_str(), channel.channelID,
@@ -360,6 +365,9 @@ bool Decoder::readLayersInfo(LayersInformation& layers)
       img.height = height;
       img.channels.push_back(channel.channelID);
       readImage(img);
+      
+      m_file->seek(fileEnd);
+      fileBegin = fileEnd;
     }
   }
 
