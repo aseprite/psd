@@ -344,10 +344,11 @@ bool Decoder::readLayersInfo(LayersInformation& layers)
   }
 
   // Read channel data of each layer
+  uint32_t fileBegin = m_file->tell();
   for (auto& layerRecord : layers.layers) {
-    if(m_delegate)
-      m_delegate->onLayerSelected(layerRecord);
-    uint32_t fileBegin = m_file->tell();
+    if (m_delegate)
+      m_delegate->onBeginLayer(layerRecord);
+
     for (auto& channel : layerRecord.channels) {
       const uint16_t compression = read16();
       const int width = layerRecord.width();
@@ -369,6 +370,8 @@ bool Decoder::readLayersInfo(LayersInformation& layers)
       m_file->seek(fileEnd);
       fileBegin = fileEnd;
     }
+    if (m_delegate)
+      m_delegate->onEndLayer(layerRecord);
   }
 
   m_file->seek(beg + length);

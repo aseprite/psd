@@ -12,7 +12,6 @@
 class Delegate : public psd::DecoderDelegate {
 public:
   psd::LayersInformation layers;
-  psd::ColorModeData colorModeData;
 
   void onFileHeader(const psd::FileHeader& fileHeader) override {
     std::printf(
@@ -30,6 +29,10 @@ public:
       fileHeader.depth,
       fileHeader.colorMode,
       psd::color_mode_string(fileHeader.colorMode));
+  }
+
+  void onLayerSelected(const std::string &layerName){
+    std::printf("selected layer: %s\n", layerName.c_str());
   }
 
   void onLayersInfo(const psd::LayersInformation& layers) override {
@@ -66,12 +69,6 @@ public:
     }
     if (i<int(res.data.size()))
       std::printf("  ...\n");
-  }
-
-  void onColorModeData(psd::ColorModeData const& colorMode) {
-    if (!colorMode.colors.empty()) {
-      colorModeData = colorMode;
-    }
   }
 
   void onBeginImage(const psd::ImageData& img) override {
@@ -112,13 +109,12 @@ public:
 };
 
 int main(int argc, char** argv){
-  std::string filename{};
   if (argc < 2) {
-    filename = "D://Visual Studio Projects//aseprite_test//"
-        "test-images//psd//rgb4x4-4frames.psd";
+    std::printf("Usage: %s file.psd\n", argv[0]);
+    return 1;
   }
 
-  FILE* f = std::fopen(filename.c_str(), "rb");
+  FILE* f = std::fopen(argv[1], "rb");
   if (!f) {
     std::printf("File not found '%s'\n", argv[1]);
     return 1;

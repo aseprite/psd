@@ -489,7 +489,8 @@ namespace psd {
     virtual void onLayersAndMask(const LayersInformation& layers) { }
     virtual void onLayersInfo(const LayersInformation& layers) { }
     virtual void onImageData(const ImageData& imageData) { }
-    virtual void onLayerSelected(const LayerRecord &layer){}
+    virtual void onBeginLayer(const LayerRecord& layer) { }
+    virtual void onEndLayer(const LayerRecord& layer) { }
 
     // Function to read image data (from layers or from the whole
     // document).
@@ -504,7 +505,7 @@ namespace psd {
     virtual void onImageScanline(const ImageData& imgData,
                                  const int y,
                                  const ChannelID chanID,
-                                 const std::vector<uint32_t> &data){}
+                                 const std::vector<uint32_t>& data) { }
     virtual void onEndImage(const ImageData& img) { }
   };
 
