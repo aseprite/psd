@@ -14,9 +14,6 @@
 #include <vector>
 #include <memory>
 
-#undef TRACE
-#define TRACE std::printf
-
 namespace psd {
 
 #define PSD_DEFINE_DWORD(a, b, c, d) \
@@ -234,7 +231,7 @@ namespace psd {
   
   struct OSType {
     virtual OSTypeKey type() const = 0;
-    ~OSType(){}
+    virtual ~OSType() { }
   };
 
   struct OSTypeClassMetaType {
@@ -255,7 +252,10 @@ namespace psd {
     Unit   unit;
     double value = 0.0;
 
-    OSTypeUnitFloat(Unit u, double v): unit{u}, value{v}{}
+    OSTypeUnitFloat(Unit u, double v)
+      : unit(u)
+      , value(v) 
+    { }
     OSTypeKey type() const override {
       return OSTypeKey::UnitFloat;
     }
@@ -264,7 +264,7 @@ namespace psd {
   struct OSTypeDouble: OSType {
     double value = 0.0;
 
-    OSTypeDouble(double v): value{v}{}
+    OSTypeDouble(double v): value(v) { }
     OSTypeKey type() const override {
       return OSTypeKey::Double;
     }
@@ -282,7 +282,7 @@ namespace psd {
   struct OSTypeString: OSType {
     std::wstring value;
 
-    OSTypeString(std::wstring const &v): value{v}{}
+    OSTypeString(std::wstring const& v): value(v) { }
     OSTypeKey type() const override {
       return OSTypeKey::String;
     }
@@ -312,7 +312,7 @@ namespace psd {
   struct OSTypeBoolean: OSType {
     bool value = false;
 
-    OSTypeBoolean(bool v): value{v}{}
+    OSTypeBoolean(bool v): value(v) { }
     OSTypeKey type() const override {
       return OSTypeKey::Boolean;
     }
@@ -338,7 +338,7 @@ namespace psd {
   struct OSTypeLargeInt: OSType {
     std::uint64_t value = 0;
 
-    OSTypeLargeInt(uint64_t v): value{v}{}
+    OSTypeLargeInt(uint64_t v): value(v) { }
     OSTypeKey type() const override {
       return OSTypeKey::LargeInteger;
     }
@@ -347,7 +347,7 @@ namespace psd {
   struct OSTypeInt: OSType {
     std::uint32_t value = 0;
 
-    OSTypeInt(uint32_t v): value{v}{}
+    OSTypeInt(uint32_t v): value(v) { }
     OSTypeKey type() const override {
       return OSTypeKey::Long;
     }
@@ -377,8 +377,8 @@ namespace psd {
     std::vector<std::unique_ptr<OSType>> descriptors;
 
     OSTypeDescriptor() = default;
-    OSTypeDescriptor(std::wstring const &str)
-      : descriptorName{str}{}
+    OSTypeDescriptor(const std::wstring& str)
+      : descriptorName(str) { }
 
     OSTypeKey type() const override {
       return OSTypeKey::Descriptor;
@@ -421,9 +421,25 @@ namespace psd {
     int height() const { return right - left; }
   };
 
+  struct GlobalMaskInfo {
+    enum class Opacity: uint16_t {
+      Transparent = 0,
+      Opaque = 100
+    };
+
+    enum class MaskKind: uint8_t {
+      Inverted = 0,
+      ColorProtected = 1,
+      ExactPixelValue = 128,
+    };
+
+    Opacity  opacity;
+    MaskKind kind;
+  };
+
   struct LayersInformation {
     std::vector<LayerRecord> layers;
-    std::vector<uint8_t> globalMaskData;
+    GlobalMaskInfo maskInfo;
   };
 
   enum class CompressionMethod {

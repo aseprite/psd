@@ -7,7 +7,6 @@
 #include "psd.h"
 #include "psd_details.h"
 
-#include <cassert>
 #include <cinttypes>
 #include <stdexcept>
 
@@ -41,9 +40,12 @@ bool Decoder::readFileHeader()
         width, height, depth, colorMode);
 
   if (magic != PSD_FILE_MAGIC_NUMBER)
-    return false;
+    throw std::runtime_error(
+      "The magic number in the header do not match");
+
   if (depth != 1 && depth != 8 && depth != 16 && depth != 32)
-    return false;
+    throw std::runtime_error("Unsupported image depth");
+
   if (colorMode != uint16_t(ColorMode::Bitmap) &&
       colorMode != uint16_t(ColorMode::Grayscale) &&
       colorMode != uint16_t(ColorMode::Indexed) &&
@@ -52,21 +54,22 @@ bool Decoder::readFileHeader()
       colorMode != uint16_t(ColorMode::Multichannel) &&
       colorMode != uint16_t(ColorMode::Duotone) &&
       colorMode != uint16_t(ColorMode::Lab))
-    return false;
+    throw std::runtime_error("Invalid color mode found in the header");
 
   // Check valid supported size depending on file version
   switch (Version(version)) {
     case Version::Psd:
       if (width > 30000 || height > 30000)
-        return false;
+        throw std::runtime_error(
+          "Unexpected width/height for a PSD file");
       break;
     case Version::Psb:
       if (width > 300000 || height > 300000)
-        return false;
+        throw std::runtime_error(
+          "Unexpected width/height for a PSB file");
       break;
     default:
-      // Invalid version number
-      return false;
+      throw std::runtime_error("Invalid version number");
   }
 
   m_header.version = Version(version);
@@ -87,25 +90,23 @@ bool Decoder::readColorModeData()
   data.length = read32();
 
   TRACE("Color Mode Data length=%d\n", data.length);
-  // only indexed and duotone have color mode, all other modes 
+  // Only indexed and duotone have color mode, all other modes 
   // have their length set to 0
 
   if (data.length == 0) {
     if (m_header.colorMode == ColorMode::Indexed
-      || m_header.colorMode == ColorMode::Duotone) {
-      TRACE("The color mode cannot be indexed/duotone and have size zero\n",
-            "Must be a corrupt file");
-      return false;
-    }
+      || m_header.colorMode == ColorMode::Duotone)
+      throw std::runtime_error(
+        "The color mode cannot be indexed/duotone and have size zero,"
+        "this must be a corrupt file");
     else
       return m_file->ok();
   }
 
   if (m_header.colorMode == ColorMode::Indexed) {
-    if (data.length != 768) {
-      TRACE("A corrupt indexed file");
-      return false;
-    }
+    if (data.length != 768)
+      throw std::runtime_error("Unexpected palette length for indexed image");
+
     data.colors.resize(256);
     for (int i=0; i<256; ++i) data.colors[i].r = read8();
     for (int i=0; i<256; ++i) data.colors[i].g = read8();
@@ -142,8 +143,8 @@ bool Decoder::readImageResources()
 
     const uint16_t resID = read16();
 #ifdef _DEBUG
-    char const* resourceName = ImageResource::resIDString(resID);
-    std::printf("%s\n", resourceName);
+    const char* resourceName = ImageResource::resIDString(resID);
+    TRACE("%s\n", resourceName);
 #endif // _DEBUG
 
     const std::string name = readPascalString(2);
@@ -235,7 +236,7 @@ bool Decoder::readLayersAndMask()
 
         m_file->seek(m_file->tell() + dataLength);
       }
-      std::printf("\n");
+      TRACE("\n");
     }
 
     // TODO
@@ -283,13 +284,11 @@ bool Decoder::readImageData()
       img.channels.push_back(ChannelID::Alpha);
       break;
     default:
-      throw std::runtime_error("invalid number of channels"); // TODO support custom channels
+      throw std::runtime_error("Invalid number of channels"); // TODO support custom channels
       break;
   }
 
-  if (!readImage(img))
-    return false;
-
+  readImage(img);
   if (m_delegate)
     m_delegate->onImageData(data);
   return true;
@@ -321,10 +320,8 @@ bool Decoder::readLayersInfo(LayersInformation& layers)
   // Read layers info
   for (uint16_t i=0; i<uint16_t(nlayers); ++i) {
     LayerRecord layerRecord;
-    if (!readLayerRecord(layers, layerRecord)) {
-      TRACE("error reading layer record\n");
-      return false;
-    }
+    if (!readLayerRecord(layers, layerRecord))
+      throw std::runtime_error("Error reading layer record");
 
     // Add the layer
     layers.layers.push_back(layerRecord);
@@ -366,7 +363,7 @@ bool Decoder::readLayersInfo(LayersInformation& layers)
       img.height = height;
       img.channels.push_back(channel.channelID);
       readImage(img);
-      
+
       m_file->seek(fileEnd);
       fileBegin = fileEnd;
     }
@@ -401,13 +398,14 @@ bool Decoder::readLayerRecord(LayersInformation& layers,
          ((magic >> 8) & 255),
          ((magic) & 255));
   if (magic != PSD_BLEND_MODE_MAGIC_NUMBER)
-    return false;
+    throw std::runtime_error(
+      "Magic number does not match for layer record");
 
   uint32_t bm = read32();
   layerRecord.blendMode = LayerBlendMode(bm);
   layerRecord.opacity = read8();
 
-  TRACE(" blendMode=%d\n",
+  TRACE(" blendMode=%d %d %d %d\n",
          ((bm >> 24) & 255),
          ((bm >> 16) & 255),
          ((bm >> 8) & 255),
@@ -446,13 +444,29 @@ bool Decoder::readLayerRecord(LayersInformation& layers,
 
 bool Decoder::readGlobalMaskInfo(LayersInformation& layers)
 {
+  const std::size_t filePos = m_file->tell();
   uint64_t length = read32();
   TRACE("Global mask info length=%" PRId64 "\n", length);
   if (length == 0)
     return true;
 
-  layers.globalMaskData.resize(length);
-  m_file->read(&layers.globalMaskData[0], length);
+  read16(); // Overlay color space
+  read64(); // 4 * 2 bytes color components
+  const uint16_t maskOpacity = read16();
+  const uint8_t  maskKind = read8();
+
+  if (maskOpacity != 0 && maskOpacity != 100)
+    throw std::runtime_error("Unexpected opacity for mask");
+
+  if (maskKind != 0 && maskOpacity != 1 && maskKind != 128)
+    throw std::runtime_error("Unexpected mask kind");
+
+  layers.maskInfo.opacity = 
+    static_cast<GlobalMaskInfo::Opacity>(maskOpacity);
+  layers.maskInfo.kind = 
+    static_cast<GlobalMaskInfo::MaskKind>(maskKind);
+
+  m_file->seek(filePos + length);
   return true;
 }
 
@@ -569,7 +583,7 @@ bool Decoder::readImage(const ImageData& img)
   // Read channel by channel
   int curByteCount = 0;
   for (ChannelID chanID : img.channels) {
-    TRACE("--- Channel ID=%d compression=%d depth=%d scanline=%d ---\n",
+    TRACE("--- Channel ID=%d compression=%d depth=%d scanline=%zu ---\n",
           chanID,
           img.compressionMethod,
           img.depth,
@@ -618,7 +632,8 @@ bool Decoder::readImage(const ImageData& img)
               rawData.push_back(dword);
             }
             else {
-              return false;
+              throw std::runtime_error(
+                "Unsupported raw image depth");
             }
           }
           TRACE("\n");

@@ -14,4 +14,7 @@
 #define PSD_LAYER_INFO_MAGIC_NUMBER2 (('8' << 24) | ('B' << 16) | ('6' << 8) | '4')
 #define PSD_BLEND_MODE_MAGIC_NUMBER  (('8' << 24) | ('B' << 16) | ('I' << 8) | 'M')
 
+#undef TRACE
+#define TRACE(...)
+
 #endif

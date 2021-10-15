@@ -6,7 +6,6 @@
 
 #include "psd.h"
 
-#include <cassert>
 #include <cstdio>
 
 class Delegate : public psd::DecoderDelegate {
@@ -29,10 +28,6 @@ public:
       fileHeader.depth,
       fileHeader.colorMode,
       psd::color_mode_string(fileHeader.colorMode));
-  }
-
-  void onLayerSelected(const std::string &layerName){
-    std::printf("selected layer: %s\n", layerName.c_str());
   }
 
   void onLayersInfo(const psd::LayersInformation& layers) override {
@@ -108,7 +103,8 @@ public:
 
 };
 
-int main(int argc, char** argv){
+int main(int argc, char** argv)
+{
   if (argc < 2) {
     std::printf("Usage: %s file.psd\n", argv[0]);
     return 1;

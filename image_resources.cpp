@@ -5,8 +5,8 @@
 // Read LICENSE.txt for more information.
 
 #include "psd.h"
-
-#include <cassert>
+#include "psd_details.h"
+#include <stdexcept>
 
 namespace psd {
 
@@ -113,7 +113,7 @@ const char* ImageResource::resIDString(uint16_t resID)
   return "";
 }
 
-// static
+// Static
 bool ImageResource::resIDHasDescriptor(uint16_t resID)
 {
   switch (resID) {
@@ -132,9 +132,11 @@ bool ImageResource::resIDHasDescriptor(uint16_t resID)
       return false;
   }
 }
-bool is_valid_class_type(const uint32_t class_id) {
-    // we don't want to cast the class_id to OSTypeKey to avoid UB
-    switch (class_id) {
+
+bool is_valid_class_type(const uint32_t class_id)
+{
+  // We don't want to cast the class_id to OSTypeKey to avoid UB
+  switch (class_id) {
     case (uint32_t)OSTypeKey::Alias:
     case (uint32_t)OSTypeKey::Boolean:
     case (uint32_t)OSTypeKey::ClassType:
@@ -150,13 +152,14 @@ bool is_valid_class_type(const uint32_t class_id) {
     case (uint32_t)OSTypeKey::Reference:
     case (uint32_t)OSTypeKey::UnitFloat:
     case (uint32_t)OSTypeKey::String:
-        return true;
+      return true;
     }
-    return false;
+  return false;
 }
 
-bool is_valid_reference_type(const uint32_t key) {
-    switch (key) {
+bool is_valid_reference_type(const uint32_t key)
+{
+  switch (key) {
     case (uint32_t)OSTypeKey::RefClass:
     case (uint32_t)OSTypeKey::RefEnum:
     case (uint32_t)OSTypeKey::RefIdentifier:
@@ -165,127 +168,139 @@ bool is_valid_reference_type(const uint32_t key) {
     case (uint32_t)OSTypeKey::RefOffset:
     case (uint32_t)OSTypeKey::RefProperty:
       return true;
-    }
-    return false;
-}
-
-bool is_valid_unit_float(const uint32_t unit) {
-  switch (unit) {
-  case (std::uint32_t)OSTypeUnitFloat::Unit::Angle:
-  case (std::uint32_t)OSTypeUnitFloat::Unit::Density:
-  case (std::uint32_t)OSTypeUnitFloat::Unit::Distance:
-  case (std::uint32_t)OSTypeUnitFloat::Unit::None:
-  case (std::uint32_t)OSTypeUnitFloat::Unit::Percent:
-  case (std::uint32_t)OSTypeUnitFloat::Unit::Pixel:
-    return true;
   }
   return false;
 }
 
-OSTypeClassMetaType Decoder::parseDescrVariable() {
-    auto const classIDLength = read32();
-    OSTypeClassMetaType meta;
-    if (classIDLength == 0) {
-        meta.keyClassID = read32();
-        TRACE("ClassID: %d", meta.keyClassID);
-    }
-    else {
-        meta.name.resize(classIDLength);
-        m_file->read((uint8_t*)&meta.name[0], classIDLength);
-        TRACE("ClassID: %s", meta.name.c_str());
-    }
-    return meta;
+bool is_valid_unit_float(const uint32_t unit)
+{
+  switch (unit) {
+    case (std::uint32_t)OSTypeUnitFloat::Unit::Angle:
+    case (std::uint32_t)OSTypeUnitFloat::Unit::Density:
+    case (std::uint32_t)OSTypeUnitFloat::Unit::Distance:
+    case (std::uint32_t)OSTypeUnitFloat::Unit::None:
+    case (std::uint32_t)OSTypeUnitFloat::Unit::Percent:
+    case (std::uint32_t)OSTypeUnitFloat::Unit::Pixel:
+      return true;
+    default:
+      return false;
+  }
 }
 
-std::unique_ptr<OSType> Decoder::parseReferenceType() {
-    const uint32_t nItems = read32();
-    auto ref = std::make_unique<OSTypeReference>();
-
-    for (int i = 0; i < nItems; ++i) {
-        const uint32_t osTypeInt = read32();
-        assert(is_valid_reference_type(osTypeInt));
-        const OSTypeKey osType = static_cast<OSTypeKey>(osTypeInt);
-
-        switch (osType) {
-        case OSTypeKey::RefProperty: {
-            auto data = std::make_unique<OSTypeProperty>();
-            data->propName = getUnicodeString();
-            data->classID = parseDescrVariable();
-            data->keyID = parseDescrVariable();
-            ref->refs.emplace_back(std::move(data));
-            break;
-        }
-        case OSTypeKey::RefClass:
-            ref->refs.emplace_back(parseClassType());
-            break;
-        case OSTypeKey::RefEnum: {
-            auto enumRef = std::make_unique<OSTypeEnumeratedRef>();
-            enumRef->refClassID = getUnicodeString();
-            enumRef->classID = parseDescrVariable();
-            enumRef->typeID = parseDescrVariable();
-            enumRef->enumValue = parseDescrVariable();
-            ref->refs.emplace_back(std::move(enumRef));
-            break;
-        }
-        case OSTypeKey::RefOffset: {
-            auto offset = std::make_unique<OSTypeOffset>();
-            offset->offsetName = getUnicodeString();
-            offset->classID = parseDescrVariable();
-            offset->value = read32();
-            ref->refs.emplace_back(std::move(offset));
-            break;
-        }
-        case OSTypeKey::RefIdentifier:
-        case OSTypeKey::RefIndex:
-        case OSTypeKey::RefName:
-            assert(false);
-            break;
-        }
-    }
-    return ref;
+OSTypeClassMetaType Decoder::parseDescrVariable()
+{
+  const uint32_t classIDLength = read32();
+  OSTypeClassMetaType meta;
+  if (classIDLength == 0) {
+    meta.keyClassID = read32();
+    TRACE("ClassID: %d", meta.keyClassID);
+  }
+  else {
+    meta.name.resize(classIDLength);
+    m_file->read((uint8_t*)&meta.name[0], classIDLength);
+    TRACE("ClassID: %s", meta.name.c_str());
+  }
+  return meta;
 }
 
-std::unique_ptr<OSType> Decoder::parseListType() {
+std::unique_ptr<OSType> Decoder::parseReferenceType()
+{
+  const uint32_t nItems = read32();
+  std::unique_ptr<OSTypeReference> ref(new OSTypeReference);
+  for (int i = 0; i < nItems; ++i) {
+    const uint32_t osTypeInt = read32();
+    if(!is_valid_reference_type(osTypeInt))
+      throw std::runtime_error(
+        "invalid reference type while parsing references");
+
+    const OSTypeKey osType = static_cast<OSTypeKey>(osTypeInt);
+    switch (osType) {
+      case OSTypeKey::RefProperty: {
+        std::unique_ptr<OSTypeProperty> data(new OSTypeProperty);
+        data->propName = getUnicodeString();
+        data->classID = parseDescrVariable();
+        data->keyID = parseDescrVariable();
+        ref->refs.emplace_back(std::move(data));
+        break;
+      }
+      case OSTypeKey::RefClass:
+        ref->refs.emplace_back(parseClassType());
+        break;
+      case OSTypeKey::RefEnum: {
+        std::unique_ptr<OSTypeEnumeratedRef> enumRef(new OSTypeEnumeratedRef);
+        enumRef->refClassID = getUnicodeString();
+        enumRef->classID = parseDescrVariable();
+        enumRef->typeID = parseDescrVariable();
+        enumRef->enumValue = parseDescrVariable();
+        ref->refs.emplace_back(std::move(enumRef));
+        break;
+      }
+      case OSTypeKey::RefOffset: {
+        std::unique_ptr<OSTypeOffset> offset(new OSTypeOffset);
+        offset->offsetName = getUnicodeString();
+        offset->classID = parseDescrVariable();
+        offset->value = read32();
+        ref->refs.emplace_back(std::move(offset));
+        break;
+      }
+      case OSTypeKey::RefIdentifier:
+      case OSTypeKey::RefIndex:
+      case OSTypeKey::RefName:
+        throw std::runtime_error(
+          "undocumented type encountered parsing reference type");
+      } // End switch
+    } // End for
+  return ref;
+}
+
+std::unique_ptr<OSType> Decoder::parseListType()
+{
   const uint32_t nLength = read32();
-  auto list = std::make_unique<OSTypeList>();
+  std::unique_ptr<OSTypeList> list(new OSTypeList);
   for (int i = 0; i < nLength; ++i) {
     list->values.emplace_back(parseOsTypeVariable());
   }
   return list;
 }
 
-std::unique_ptr<OSType> Decoder::parseClassType() {
-  auto klass = std::make_unique<OSTypeClass>();
+std::unique_ptr<OSType> Decoder::parseClassType()
+{
+  std::unique_ptr<OSTypeClass> klass(new OSTypeClass);
   klass->className = getUnicodeString();
   klass->meta = parseDescrVariable();
   return klass;
 }
 
-std::unique_ptr<OSType> Decoder::parseEnumeratedType() {
-  auto enum_ = std::make_unique<OSTypeEnum>();
+std::unique_ptr<OSType> Decoder::parseEnumeratedType()
+{
+  std::unique_ptr<OSTypeEnum> enum_(new OSTypeEnum);
   enum_->typeID = parseDescrVariable();
   enum_->enumValue = parseDescrVariable();
   return enum_;
 }
 
-std::unique_ptr<OSType> Decoder::parseAliasType() {
+std::unique_ptr<OSType> Decoder::parseAliasType()
+{
   const uint32_t length = read32();
   m_file->seek(m_file->tell() + length);
-  return std::make_unique<OSTypeAlias>();
+  return std::unique_ptr<OSType>(new OSTypeAlias);
 }
 
-std::unique_ptr<OSType> Decoder::parseOsTypeVariable() {
-    const OSTypeClassMetaType descMeta = parseDescrVariable();
-    if (descMeta.keyClassID == 0) {
-      //return std::make_unique<OSTypeDescriptor>(descMeta.name);
-      return std::make_unique<OSTypeDescriptor>();
-    }
+std::unique_ptr<OSType> Decoder::parseOsTypeVariable()
+{
+  const OSTypeClassMetaType descMeta = parseDescrVariable();
+  if (descMeta.keyClassID == 0) {
+    return std::unique_ptr<OSType>(new OSTypeDescriptor);
+  }
 
-    const uint32_t osTypeInt = read32();
-    assert(is_valid_class_type(osTypeInt));
-    const OSTypeKey osType = static_cast<OSTypeKey>(osTypeInt);
+  const uint32_t osTypeInt = read32();
+  if(!is_valid_class_type(osTypeInt))
+    throw std::runtime_error(
+      "invalid class type encountered in descriptor type");
 
-    switch (osType) {
+  const OSTypeKey osType = static_cast<OSTypeKey>(osTypeInt);
+
+  switch (osType) {
     case OSTypeKey::GlobalObject:
     case OSTypeKey::Descriptor:
       return parseDescriptor();
@@ -294,46 +309,51 @@ std::unique_ptr<OSType> Decoder::parseOsTypeVariable() {
     case OSTypeKey::List:
       return parseListType();
     case OSTypeKey::Double:
-      return std::make_unique<OSTypeDouble>((double)read64());
+      return std::unique_ptr<OSTypeDouble>(new OSTypeDouble(read64()));
     case OSTypeKey::UnitFloat: {
       const uint32_t unit = read32();
       const double value = read64();
-      assert(is_valid_unit_float(unit));
-      return std::make_unique<OSTypeUnitFloat>(
-          static_cast<OSTypeUnitFloat::Unit>(unit), value);
+      if(!is_valid_unit_float(unit))
+        throw std::runtime_error(
+          "invalid unit float in descriptor type");
+
+      return std::unique_ptr<OSTypeUnitFloat>(
+        new OSTypeUnitFloat(
+          static_cast<OSTypeUnitFloat::Unit>(unit), value));
     }
     case OSTypeKey::String:
-      return std::make_unique<OSTypeString>(getUnicodeString());
+      return std::unique_ptr<OSTypeString>(
+        new OSTypeString(getUnicodeString()));
     case OSTypeKey::Enumerated:
       return parseEnumeratedType();
     case OSTypeKey::Long:
-      return std::make_unique<OSTypeInt>(read32());
+      return std::unique_ptr<OSType>(new OSTypeInt(read32()));
     case OSTypeKey::LargeInteger:
-      return std::make_unique<OSTypeLargeInt>(read64());
+      return std::unique_ptr<OSType>(new OSTypeLargeInt(read64()));
     case OSTypeKey::Boolean:
-      return std::make_unique<OSTypeBoolean>((bool)read8());
+      return std::unique_ptr<OSType>(new OSTypeBoolean((bool)read8()));
     case OSTypeKey::GlobalClass:
     case OSTypeKey::ClassType:
       return parseClassType();
     case OSTypeKey::Alias:
       return parseAliasType();
     case OSTypeKey::RawData:
-      auto data = std::make_unique<OSTypeRawData>();
+      std::unique_ptr<OSTypeRawData> data(new OSTypeRawData);
       data->value.resize(descMeta.name.size());
       std::copy(descMeta.name.begin(), descMeta.name.end(),
                 data->value.begin());
       return data;
-    }
-    return nullptr;
+  }
+  return nullptr;
 }
 
-std::unique_ptr<OSType> Decoder::parseDescriptor() {
-  auto desc = std::make_unique<OSTypeDescriptor>();
+std::unique_ptr<OSType> Decoder::parseDescriptor()
+{
+  std::unique_ptr<OSTypeDescriptor> desc(new OSTypeDescriptor);
   desc->descriptorName = getUnicodeString();
   desc->classId = parseDescrVariable();
 
-  auto const nDescriptors = read32();
-  assert(nDescriptors > 0);
+  const uint32_t nDescriptors = read32();
   desc->descriptors.reserve(nDescriptors);
 
   for (int i = 0; i < nDescriptors; ++i) {
@@ -343,9 +363,10 @@ std::unique_ptr<OSType> Decoder::parseDescriptor() {
   return desc;
 }
 
-std::wstring Decoder::getUnicodeString() {
-  auto const length = read32();
-  std::wstring str{};
+std::wstring Decoder::getUnicodeString()
+{
+  const uint32_t length = read32();
+  std::wstring str;
   for (int i = 0; i < length; ++i) {
     wchar_t ch = read16();
     str += ch;
@@ -354,3 +375,4 @@ std::wstring Decoder::getUnicodeString() {
 }
 
 } // namespace psd
+

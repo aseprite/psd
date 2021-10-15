@@ -28,21 +28,15 @@ bool decode_psd(FileInterface* file,
 {
   Decoder decoder(file, delegate);
 
-  if (!decoder.readFileHeader())
+  try {
+    decoder.readFileHeader();
+    decoder.readColorModeData();
+    decoder.readImageResources();
+    decoder.readLayersAndMask();
+    decoder.readImageData();
+  } catch (const std::exception& ) {
     return false;
-
-  if (!decoder.readColorModeData())
-    return false;
-
-  if (!decoder.readImageResources())
-    return false;
-
-  if (!decoder.readLayersAndMask())
-    return false;
-
-  if (!decoder.readImageData())
-    return false;
-
+  }
   return true;
 }
 
