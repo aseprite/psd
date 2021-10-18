@@ -5,21 +5,18 @@
 // Read LICENSE.txt for more information.
 
 #include "psd.h"
+#include "psd_debug.h"
 #include "psd_details.h"
 
-#include <cassert>
 #include <cinttypes>
 #include <stdexcept>
-
-#undef TRACE
-#define TRACE(...)
 
 namespace psd {
 
 Decoder::Decoder(FileInterface* file,
                  DecoderDelegate* delegate)
-  : m_file(file)
-  , m_delegate(delegate)
+  : m_delegate(delegate)
+  , m_file(file)
 {
 }
 
@@ -44,9 +41,12 @@ bool Decoder::readFileHeader()
         width, height, depth, colorMode);
 
   if (magic != PSD_FILE_MAGIC_NUMBER)
-    return false;
+    throw std::runtime_error(
+      "The magic number in the header do not match");
+
   if (depth != 1 && depth != 8 && depth != 16 && depth != 32)
-    return false;
+    throw std::runtime_error("Unsupported image depth");
+
   if (colorMode != uint16_t(ColorMode::Bitmap) &&
       colorMode != uint16_t(ColorMode::Grayscale) &&
       colorMode != uint16_t(ColorMode::Indexed) &&
@@ -55,21 +55,22 @@ bool Decoder::readFileHeader()
       colorMode != uint16_t(ColorMode::Multichannel) &&
       colorMode != uint16_t(ColorMode::Duotone) &&
       colorMode != uint16_t(ColorMode::Lab))
-    return false;
+    throw std::runtime_error("Invalid color mode found in the header");
 
   // Check valid supported size depending on file version
   switch (Version(version)) {
     case Version::Psd:
       if (width > 30000 || height > 30000)
-        return false;
+        throw std::runtime_error(
+          "Unexpected width/height for a PSD file");
       break;
     case Version::Psb:
       if (width > 300000 || height > 300000)
-        return false;
+        throw std::runtime_error(
+          "Unexpected width/height for a PSB file");
       break;
     default:
-      // Invalid version number
-      return false;
+      throw std::runtime_error("Invalid version number");
   }
 
   m_header.version = Version(version);
@@ -90,9 +91,23 @@ bool Decoder::readColorModeData()
   data.length = read32();
 
   TRACE("Color Mode Data length=%d\n", data.length);
+  // Only indexed and duotone have color mode, all other modes
+  // have their length set to 0
 
-  if (m_header.colorMode == ColorMode::Indexed &&
-      data.length == 768) {
+  if (data.length == 0) {
+    if (m_header.colorMode == ColorMode::Indexed
+      || m_header.colorMode == ColorMode::Duotone)
+      throw std::runtime_error(
+        "The color mode cannot be indexed/duotone and have size zero,"
+        "this must be a corrupt file");
+    else
+      return m_file->ok();
+  }
+
+  if (m_header.colorMode == ColorMode::Indexed) {
+    if (data.length != 768)
+      throw std::runtime_error("Unexpected palette length for indexed image");
+
     data.colors.resize(256);
     for (int i=0; i<256; ++i) data.colors[i].r = read8();
     for (int i=0; i<256; ++i) data.colors[i].g = read8();
@@ -123,11 +138,17 @@ bool Decoder::readImageResources()
   while (length > 0) {
     const uint32_t resBegin = m_file->tell();
 
-    uint32_t magic = read32();
+    const uint32_t magic = read32();
     if (magic != PSD_IMAGE_BLOCK_MAGIC_NUMBER)
       break;
 
     const uint16_t resID = read16();
+#ifdef _DEBUG
+    const char* resourceName = ImageResource::resIDString(resID);
+    (void)resourceName;
+    TRACE("%s\n", resourceName);
+#endif // _DEBUG
+
     const std::string name = readPascalString(2);
     const uint32_t resLength = read32();
 
@@ -163,8 +184,8 @@ bool Decoder::readImageResources()
 bool Decoder::readLayersAndMask()
 {
   LayersInformation layers;
-  uint64_t length = read32or64Length();
-  uint64_t beg = m_file->tell();
+  const uint64_t length = read32or64Length();
+  const uint64_t beg = m_file->tell();
 
   TRACE("layers length=%" PRId64 "\n", length);
 
@@ -178,12 +199,12 @@ bool Decoder::readLayersAndMask()
   if (m_file->tell() < beg+length) {
     TRACE(" Tagged blocks\n");
 
-    while (m_file->tell() - (beg+length) > 4) {
-      uint32_t signature = read32(); // Magic ("8BIM" or "8B64")
+    while ((m_file->tell() - (beg+length)) > 4) {
+      const uint32_t signature = read32(); // Magic ("8BIM" or "8B64")
       if (signature == PSD_LAYER_INFO_MAGIC_NUMBER ||
           signature == PSD_LAYER_INFO_MAGIC_NUMBER2) {
-        LayerInfoKey key = static_cast<LayerInfoKey>(read32());
-        uint64_t length;
+        const LayerInfoKey key = static_cast<LayerInfoKey>(read32());
+        uint64_t dataLength;
 
         if ((m_header.version == Version::Psb) &&
             (key == LayerInfoKey::LMsk ||
@@ -199,15 +220,15 @@ bool Decoder::readLayersAndMask()
              key == LayerInfoKey::FEid ||
              key == LayerInfoKey::FXid ||
              key == LayerInfoKey::PxSD)) {
-          length = read64();
+          dataLength = read64();
         }
         else {
-          length = read32();
+          dataLength = read32();
         }
 
-        uint64_t origLength = length;
-        if (length & 1)
-          ++length;
+        uint64_t origLength = dataLength;
+        if (origLength & 1)
+          ++dataLength;
 
         TRACE(" tag block %c%c%c%c with length=%" PRId64 " (%" PRId64 ")\n",
               ((((int)key)>>24)&0xff),
@@ -216,15 +237,9 @@ bool Decoder::readLayersAndMask()
               (((int)key)&0xff),
               length, origLength);
 
-        for (int i=0; i<length; ++i) {
-          TRACE("   ");
-          for (int j=0; j<16 && i<length; ++j, ++i) {
-            int c = read8();
-            TRACE("%c", isgraph(c) ? c: '.');
-          }
-          TRACE("\n");
-        }
+        m_file->seek(m_file->tell() + dataLength);
       }
+      TRACE("\n");
     }
 
     // TODO
@@ -256,6 +271,10 @@ bool Decoder::readImageData()
     case 1:
       img.channels.push_back(ChannelID::Alpha);
       break;
+    case 2:
+      img.channels.push_back(ChannelID::TransparencyMask);
+      img.channels.push_back(ChannelID::Red);
+      break;
     case 3:
       img.channels.push_back(ChannelID::Red);
       img.channels.push_back(ChannelID::Green);
@@ -268,13 +287,11 @@ bool Decoder::readImageData()
       img.channels.push_back(ChannelID::Alpha);
       break;
     default:
-      throw std::runtime_error("invalid number of channels"); // TODO support custom channels
+      throw std::runtime_error("Invalid number of channels"); // TODO support custom channels
       break;
   }
 
-  if (!readImage(img))
-    return false;
-
+  readImage(img);
   if (m_delegate)
     m_delegate->onImageData(data);
   return true;
@@ -282,7 +299,7 @@ bool Decoder::readImageData()
 
 bool Decoder::readLayersInfo(LayersInformation& layers)
 {
-  uint64_t length = read32or64Length();
+  const uint64_t length = read32or64Length();
   TRACE("Layers Info length=%" PRId64 "\n", length);
 
   // Empty layers section
@@ -306,10 +323,8 @@ bool Decoder::readLayersInfo(LayersInformation& layers)
   // Read layers info
   for (uint16_t i=0; i<uint16_t(nlayers); ++i) {
     LayerRecord layerRecord;
-    if (!readLayerRecord(layers, layerRecord)) {
-      TRACE("error reading layer record\n");
-      return false;
-    }
+    if (!readLayerRecord(layers, layerRecord))
+      throw std::runtime_error("Error reading layer record");
 
     // Add the layer
     layers.layers.push_back(layerRecord);
@@ -329,11 +344,16 @@ bool Decoder::readLayersInfo(LayersInformation& layers)
   }
 
   // Read channel data of each layer
+  uint32_t fileBegin = m_file->tell();
   for (auto& layerRecord : layers.layers) {
+    if (m_delegate)
+      m_delegate->onBeginLayer(layerRecord);
+
     for (auto& channel : layerRecord.channels) {
       const uint16_t compression = read16();
       const int width = layerRecord.width();
       const int height = layerRecord.height();
+      const uint32_t fileEnd = fileBegin + channel.length;
 
       TRACE("Reading channel data for layer='%s' channel=%d compression:%d width=%d height=%d\n",
             layerRecord.name.c_str(), channel.channelID,
@@ -346,7 +366,12 @@ bool Decoder::readLayersInfo(LayersInformation& layers)
       img.height = height;
       img.channels.push_back(channel.channelID);
       readImage(img);
+
+      m_file->seek(fileEnd);
+      fileBegin = fileEnd;
     }
+    if (m_delegate)
+      m_delegate->onEndLayer(layerRecord);
   }
 
   m_file->seek(beg + length);
@@ -369,31 +394,32 @@ bool Decoder::readLayerRecord(LayersInformation& layers,
   }
 
   // Blend mode signature
-  uint32_t magic = read32();
+  const uint32_t magic = read32();
   TRACE("LAYER magic=%c%c%c%c\n",
          ((magic >> 24) & 255),
          ((magic >> 16) & 255),
          ((magic >> 8) & 255),
          ((magic) & 255));
   if (magic != PSD_BLEND_MODE_MAGIC_NUMBER)
-    return false;
+    throw std::runtime_error(
+      "Magic number does not match for layer record");
 
   uint32_t bm = read32();
   layerRecord.blendMode = LayerBlendMode(bm);
   layerRecord.opacity = read8();
 
-  TRACE(" blendMode=%d\n",
+  TRACE(" blendMode=%d %d %d %d\n",
          ((bm >> 24) & 255),
          ((bm >> 16) & 255),
          ((bm >> 8) & 255),
          ((bm) & 255));
 
-  layerRecord.clipping = read8(); // clipping (0=base, 1=non-base)ad8();
+  layerRecord.clipping = read8(); // clipping (0=base, 1=non-base);
   layerRecord.flags = read8();
   read8();                      // filler (zero)
 
-  uint32_t length = read32();
-  uint32_t beforeDataPos = m_file->tell();
+  const uint32_t length = read32();
+  const uint32_t beforeDataPos = m_file->tell();
 
   // Read mask data
   uint32_t maskLength = read32();
@@ -421,13 +447,29 @@ bool Decoder::readLayerRecord(LayersInformation& layers,
 
 bool Decoder::readGlobalMaskInfo(LayersInformation& layers)
 {
+  const std::size_t filePos = m_file->tell();
   uint64_t length = read32();
   TRACE("Global mask info length=%" PRId64 "\n", length);
   if (length == 0)
     return true;
 
-  layers.globalMaskData.resize(length);
-  m_file->read(&layers.globalMaskData[0], length);
+  read16(); // Overlay color space
+  read64(); // 4 * 2 bytes color components
+  const uint16_t maskOpacity = read16();
+  const uint8_t  maskKind = read8();
+
+  if (maskOpacity != 0 && maskOpacity != 100)
+    throw std::runtime_error("Unexpected opacity for mask");
+
+  if (maskKind != 0 && maskOpacity != 1 && maskKind != 128)
+    throw std::runtime_error("Unexpected mask kind");
+
+  layers.maskInfo.opacity =
+    static_cast<GlobalMaskInfo::Opacity>(maskOpacity);
+  layers.maskInfo.kind =
+    static_cast<GlobalMaskInfo::MaskKind>(maskKind);
+
+  m_file->seek(filePos + length);
   return true;
 }
 
@@ -544,7 +586,7 @@ bool Decoder::readImage(const ImageData& img)
   // Read channel by channel
   int curByteCount = 0;
   for (ChannelID chanID : img.channels) {
-    TRACE("--- Channel ID=%d compression=%d depth=%d scanline=%d ---\n",
+    TRACE("--- Channel ID=%d compression=%d depth=%d scanline=%zu ---\n",
           chanID,
           img.compressionMethod,
           img.depth,
@@ -554,10 +596,15 @@ bool Decoder::readImage(const ImageData& img)
 
       case CompressionMethod::RawImageData:
         for (int y=0; y<img.height; ++y) {
+
+          std::vector<uint32_t> rawData;
+          rawData.reserve(img.width);
+
           for (int x=0; x<img.width; ) {
             if (img.depth == 1) {
               uint8_t byte = read8();
-              TRACE(" %d%d%d%d%d%d%d%d",
+              TRACE("%d %d%d%d%d%d%d%d%d",
+                    byte,
                     (byte & 0x80) >> 7,
                     (byte & 0x40) >> 6,
                     (byte & 0x20) >> 5,
@@ -567,27 +614,35 @@ bool Decoder::readImage(const ImageData& img)
                     (byte & 0x02) >> 1,
                     (byte & 0x01));
               x += 8;
+              rawData.push_back(byte);
             }
             else if (img.depth == 8) {
               uint8_t byte = read8();
               TRACE(" %02x", byte);
               ++x;
+              rawData.push_back(byte);
             }
             else if (img.depth == 16) {
               uint16_t word = read16();
               TRACE(" %04x", word);
               ++x;
+              rawData.push_back(word);
             }
             else if (img.depth == 32) {
               uint32_t dword = read32();
               TRACE(" %08x", dword);
               ++x;
+              rawData.push_back(dword);
             }
             else {
-              return false;
+              throw std::runtime_error(
+                "Unsupported raw image depth");
             }
           }
           TRACE("\n");
+
+          if (m_delegate)
+            m_delegate->onImageScanline(img, y, chanID, rawData);
         }
         break;
 

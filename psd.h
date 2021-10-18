@@ -1,5 +1,5 @@
 // Aseprite PSD Library
-// Copyright (C) 2019 Igara Studio S.A.
+// Copyright (C) 2019-2021 Igara Studio S.A.
 //
 // This file is released under the terms of the MIT license.
 // Read LICENSE.txt for more information.
@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <memory>
 
 namespace psd {
 
@@ -187,6 +188,32 @@ namespace psd {
     vstk = PSD_DEFINE_DWORD('v', 's', 't', 'k'),
   };
 
+  enum class OSTypeKey : uint32_t {
+    Reference = PSD_DEFINE_DWORD('o', 'b', 'j', ' '),
+    Descriptor = PSD_DEFINE_DWORD('O', 'b', 'j', 'c'),
+    List = PSD_DEFINE_DWORD('V', 'l', 'L', 's'),
+    Double = PSD_DEFINE_DWORD('d', 'o', 'u', 'b'),
+    UnitFloat = PSD_DEFINE_DWORD('U', 'n', 't', 'F'),
+    String = PSD_DEFINE_DWORD('T', 'E', 'X', 'T'),
+    Enumerated = PSD_DEFINE_DWORD('e', 'n', 'u', 'm'),
+    Long = PSD_DEFINE_DWORD('l', 'o', 'n', 'g'),
+    LargeInteger = PSD_DEFINE_DWORD('c', 'o', 'm', 'p'),
+    Boolean = PSD_DEFINE_DWORD('b', 'o', 'o', 'l'),
+    GlobalObject = PSD_DEFINE_DWORD('G', 'l', 'b', 'O'),
+    ClassType = PSD_DEFINE_DWORD('t', 'y', 'p', 'e'),
+    GlobalClass = PSD_DEFINE_DWORD('G', 'l', 'b', 'C'),
+    Alias = PSD_DEFINE_DWORD('a', 'l', 'i', 's'),
+    RawData = PSD_DEFINE_DWORD('t', 'd', 't', 'a'),
+
+    RefProperty = PSD_DEFINE_DWORD('p', 'r', 'o', 'p'),
+    RefClass = PSD_DEFINE_DWORD('C', 'l', 's', 's'),
+    RefEnum = PSD_DEFINE_DWORD('E', 'n', 'm', 'r'),
+    RefOffset = PSD_DEFINE_DWORD('r', 'e', 'l', 'e'),
+    RefIdentifier = PSD_DEFINE_DWORD('I', 'd', 'n', 't'),
+    RefIndex = PSD_DEFINE_DWORD('i', 'd', 'n', 'x'),
+    RefName = PSD_DEFINE_DWORD('n', 'a', 'm', 'e'),
+  };
+
   enum class ChannelID : int {
     Red = 0,
     Green = 1,
@@ -202,6 +229,183 @@ namespace psd {
     uint64_t length;
   };
 
+  struct OSType {
+    virtual OSTypeKey type() const = 0;
+    virtual ~OSType() { }
+  };
+
+  struct OSTypeClassMetaType {
+    uint32_t keyClassID = 0;
+    std::string name;
+  };
+
+  struct OSTypeUnitFloat : public OSType {
+    enum class Unit {
+      Angle = PSD_DEFINE_DWORD('#', 'A', 'n', 'g'), // base degrees
+      Density = PSD_DEFINE_DWORD('#', 'R', 's', 'l'), // base per inch
+      Distance = PSD_DEFINE_DWORD('#', 'R', 'l', 't'), // base 72ppi
+      None = PSD_DEFINE_DWORD('#', 'N', 'n', 'e'), // coerced
+      Percent = PSD_DEFINE_DWORD('#', 'P', 'r', 'c'), // unit value
+      Pixel = PSD_DEFINE_DWORD('#', 'P', 'x', 'l'), // tagged unit value
+    };
+
+    Unit unit;
+    double value = 0.0;
+
+    OSTypeUnitFloat(Unit u, double v)
+      : unit(u)
+      , value(v)
+    { }
+    OSTypeKey type() const override {
+      return OSTypeKey::UnitFloat;
+    }
+  };
+
+  struct OSTypeDouble : public OSType {
+    double value = 0.0;
+
+    OSTypeDouble(double v): value(v) { }
+    OSTypeKey type() const override {
+      return OSTypeKey::Double;
+    }
+  };
+
+  struct OSTypeClass : public OSType {
+    std::wstring className;
+    OSTypeClassMetaType meta;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::ClassType;
+    }
+  };
+
+  struct OSTypeString : public OSType {
+    std::wstring value;
+
+    OSTypeString(const std::wstring& v): value(v) { }
+    OSTypeKey type() const override {
+      return OSTypeKey::String;
+    }
+  };
+
+  struct OSTypeEnumeratedRef : public OSType {
+    std::wstring refClassID;
+    OSTypeClassMetaType classID;
+    OSTypeClassMetaType typeID;
+    OSTypeClassMetaType enumValue;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::RefEnum;
+    }
+  };
+
+  struct OSTypeOffset : public OSType {
+    std::wstring offsetName;
+    OSTypeClassMetaType classID;
+    uint32_t value = 0;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::RefOffset;
+    }
+  };
+
+  struct OSTypeBoolean : public OSType {
+    bool value = false;
+
+    OSTypeBoolean(bool v): value(v) { }
+    OSTypeKey type() const override {
+      return OSTypeKey::Boolean;
+    }
+  };
+
+  struct OSTypeAlias : public OSType {
+    OSTypeKey type() const override {
+      return OSTypeKey::Alias;
+    }
+  };
+
+  struct OSTypeList : public OSType {
+    std::vector<std::unique_ptr<OSType>> values;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::List;
+    }
+    ~OSTypeList() {
+      values.clear();
+    }
+  };
+
+  struct OSTypeLargeInt : public OSType {
+    std::uint64_t value = 0;
+
+    OSTypeLargeInt(uint64_t v): value(v) { }
+    OSTypeKey type() const override {
+      return OSTypeKey::LargeInteger;
+    }
+  };
+
+  struct OSTypeInt : public OSType {
+    std::uint32_t value = 0;
+
+    OSTypeInt(uint32_t v): value(v) { }
+    OSTypeKey type() const override {
+      return OSTypeKey::Long;
+    }
+  };
+
+  struct OSTypeRawData : public OSType {
+    std::vector<uint8_t> value;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::RawData;
+    }
+  };
+
+  struct OSTypeProperty : public OSType {
+    std::wstring propName;
+    OSTypeClassMetaType classID;
+    OSTypeClassMetaType keyID;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::RefProperty;
+    }
+  };
+
+  struct OSTypeDescriptor : public OSType {
+    std::wstring descriptorName;
+    OSTypeClassMetaType classId;
+    std::vector<std::unique_ptr<OSType>> descriptors;
+
+    OSTypeDescriptor() = default;
+    OSTypeDescriptor(const std::wstring& str)
+      : descriptorName(str) { }
+
+    OSTypeKey type() const override {
+      return OSTypeKey::Descriptor;
+    }
+
+    ~OSTypeDescriptor() {
+      descriptors.clear();
+    }
+  };
+
+  struct OSTypeEnum : public OSType {
+    OSTypeClassMetaType typeID;
+    OSTypeClassMetaType enumValue;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::Enumerated;
+    }
+  };
+
+  struct OSTypeReference : public OSType {
+    std::vector<std::unique_ptr<OSType>> refs;
+
+    OSTypeKey type() const override {
+      return OSTypeKey::Reference;
+    }
+  };
+
   struct LayerRecord {
     int32_t top, left, bottom, right;
     std::vector<Channel> channels;
@@ -212,14 +416,30 @@ namespace psd {
     std::string name;
 
     bool isTransparencyProtected() const { return flags & 1; }
-    bool isVisible() const { return flags & 2; }
-    int width() const { return bottom - top; }
-    int height() const { return right - left; }
+    bool isVisible() const { return (flags & 2) == 0; }
+    int width() const { return right - left; }
+    int height() const { return bottom - top; }
+  };
+
+  struct GlobalMaskInfo {
+    enum class Opacity: uint16_t {
+      Transparent = 0,
+      Opaque = 100
+    };
+
+    enum class MaskKind: uint8_t {
+      Inverted = 0,
+      ColorProtected = 1,
+      ExactPixelValue = 128,
+    };
+
+    Opacity  opacity;
+    MaskKind kind;
   };
 
   struct LayersInformation {
     std::vector<LayerRecord> layers;
-    std::vector<uint8_t> globalMaskData;
+    GlobalMaskInfo maskInfo;
   };
 
   enum class CompressionMethod {
@@ -285,15 +505,23 @@ namespace psd {
     virtual void onLayersAndMask(const LayersInformation& layers) { }
     virtual void onLayersInfo(const LayersInformation& layers) { }
     virtual void onImageData(const ImageData& imageData) { }
+    virtual void onBeginLayer(const LayerRecord& layer) { }
+    virtual void onEndLayer(const LayerRecord& layer) { }
 
     // Function to read image data (from layers or from the whole
     // document).
     virtual void onBeginImage(const ImageData& img) { }
+    // Emitted for RLE-compressed images
     virtual void onImageScanline(const ImageData& img,
                                  const int y,
                                  const ChannelID chanID,
                                  const uint8_t* data,
                                  const int bytes) { }
+    // Emitted for RAW images
+    virtual void onImageScanline(const ImageData& imgData,
+                                 const int y,
+                                 const ChannelID chanID,
+                                 const std::vector<uint32_t>& data) { }
     virtual void onEndImage(const ImageData& img) { }
   };
 
@@ -316,6 +544,16 @@ namespace psd {
                          LayerRecord& layerRecord);
     bool readGlobalMaskInfo(LayersInformation& layers);
     bool readImage(const ImageData& img);
+    std::unique_ptr<OSType> parseOsTypeVariable();
+    std::unique_ptr<OSType> parseReferenceType();
+    std::unique_ptr<OSType> parseDescriptor();
+    std::unique_ptr<OSType> parseListType();
+    std::unique_ptr<OSType> parseClassType();
+    std::unique_ptr<OSType> parseEnumeratedType();
+    std::unique_ptr<OSType> parseAliasType();
+    OSTypeClassMetaType parseDescrVariable();
+
+    std::wstring getUnicodeString();
 
     uint8_t read8() { return m_file->read8(); }
     uint16_t read16();

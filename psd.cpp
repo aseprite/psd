@@ -1,5 +1,5 @@
 // Aseprite PSD Library
-// Copyright (C) 2019 Igara Studio S.A.
+// Copyright (C) 2019-2021 Igara Studio S.A.
 //
 // This file is released under the terms of the MIT license.
 // Read LICENSE.txt for more information.
@@ -28,21 +28,16 @@ bool decode_psd(FileInterface* file,
 {
   Decoder decoder(file, delegate);
 
-  if (!decoder.readFileHeader())
+  try {
+    decoder.readFileHeader();
+    decoder.readColorModeData();
+    decoder.readImageResources();
+    decoder.readLayersAndMask();
+    decoder.readImageData();
+  }
+  catch (const std::exception&) {
     return false;
-
-  if (!decoder.readColorModeData())
-    return false;
-
-  if (!decoder.readImageResources())
-    return false;
-
-  if (!decoder.readLayersAndMask())
-    return false;
-
-  if (!decoder.readImageData())
-    return false;
-
+  }
   return true;
 }
 
