@@ -416,9 +416,9 @@ namespace psd {
     std::string name;
 
     bool isTransparencyProtected() const { return flags & 1; }
-    bool isVisible() const { return flags & 2; }
-    int width() const { return bottom - top; }
-    int height() const { return right - left; }
+    bool isVisible() const { return (flags & 2) == 0; }
+    int width() const { return right - left; }
+    int height() const { return bottom - top; }
   };
 
   struct GlobalMaskInfo {
