@@ -458,14 +458,13 @@ bool Decoder::readGlobalMaskInfo(LayersInformation& layers)
   const uint16_t maskOpacity = read16();
   const uint8_t  maskKind = read8();
 
-  if (maskOpacity != 0 && maskOpacity != 100)
+  if (maskOpacity > 100)
     throw std::runtime_error("Unexpected opacity for mask");
 
   if (maskKind != 0 && maskOpacity != 1 && maskKind != 128)
     throw std::runtime_error("Unexpected mask kind");
 
-  layers.maskInfo.opacity =
-    static_cast<GlobalMaskInfo::Opacity>(maskOpacity);
+  layers.maskInfo.opacity = maskOpacity;
   layers.maskInfo.kind =
     static_cast<GlobalMaskInfo::MaskKind>(maskKind);
 

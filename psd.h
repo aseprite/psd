@@ -422,18 +422,13 @@ namespace psd {
   };
 
   struct GlobalMaskInfo {
-    enum class Opacity: uint16_t {
-      Transparent = 0,
-      Opaque = 100
-    };
-
     enum class MaskKind: uint8_t {
       Inverted = 0,
       ColorProtected = 1,
       ExactPixelValue = 128,
     };
 
-    Opacity  opacity;
+    uint16_t opacity;
     MaskKind kind;
   };
 
