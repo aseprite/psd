@@ -596,8 +596,8 @@ bool Decoder::readImage(const ImageData& img)
       case CompressionMethod::RawImageData:
         for (int y=0; y<img.height; ++y) {
 
-          std::vector<uint32_t> rawData;
-          rawData.reserve(img.width);
+          std::vector<uint8_t> rawData;
+          rawData.reserve(img.width * (img.depth == 1 ? 1: img.depth/8));
 
           for (int x=0; x<img.width; ) {
             if (img.depth == 1) {
@@ -625,12 +625,16 @@ bool Decoder::readImage(const ImageData& img)
               uint16_t word = read16();
               TRACE(" %04x", word);
               ++x;
-              rawData.push_back(word);
+              rawData.push_back(word & 0xff);
+              rawData.push_back(word >> 8);
             }
             else if (img.depth == 32) {
               uint32_t dword = read32();
               TRACE(" %08x", dword);
               ++x;
+              rawData.push_back(dword >> 24);
+              rawData.push_back(dword >> 16);
+              rawData.push_back(dword >> 8);
               rawData.push_back(dword);
             }
             else {
@@ -641,7 +645,9 @@ bool Decoder::readImage(const ImageData& img)
           TRACE("\n");
 
           if (m_delegate)
-            m_delegate->onImageScanline(img, y, chanID, rawData);
+            m_delegate->onImageScanline(
+              img, y, chanID,
+              &rawData[0], rawData.size());
         }
         break;
 

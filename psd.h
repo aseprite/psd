@@ -512,11 +512,6 @@ namespace psd {
                                  const ChannelID chanID,
                                  const uint8_t* data,
                                  const int bytes) { }
-    // Emitted for RAW images
-    virtual void onImageScanline(const ImageData& imgData,
-                                 const int y,
-                                 const ChannelID chanID,
-                                 const std::vector<uint32_t>& data) { }
     virtual void onEndImage(const ImageData& img) { }
   };
 
