@@ -506,7 +506,6 @@ namespace psd {
     // Function to read image data (from layers or from the whole
     // document).
     virtual void onBeginImage(const ImageData& img) { }
-    // Emitted for RLE-compressed images
     virtual void onImageScanline(const ImageData& img,
                                  const int y,
                                  const ChannelID chanID,
