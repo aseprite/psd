@@ -669,7 +669,7 @@ bool Decoder::readImage(const ImageData& img)
                 if (n == -128) {
                   // No operation, skip this byte
                 }
-                else if (n >= 0 && n < 127) {
+                else if (n >= 0 && n <= 127) {
                   for (int j=0; j<int(n)+1; ++j, ++it) {
                     if (it == end)
                       break; // throw std::runtime_error("invalid RLE data (too much individual values)");
