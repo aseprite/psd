@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <map>
 #include <memory>
 
 namespace psd {
@@ -62,10 +63,12 @@ namespace psd {
     std::vector<uint8_t> data;
   };
 
+  struct OSType;
   struct ImageResource {
     uint16_t resourceID;
     std::string name;
     std::vector<uint8_t> data;
+    std::unique_ptr<OSType> descriptor;
 
     static const char* resIDString(uint16_t resID);
     static bool resIDHasDescriptor(uint16_t resID);
@@ -235,7 +238,6 @@ namespace psd {
   };
 
   struct OSTypeClassMetaType {
-    uint32_t keyClassID = 0;
     std::string name;
   };
 
@@ -374,18 +376,10 @@ namespace psd {
   struct OSTypeDescriptor : public OSType {
     std::wstring descriptorName;
     OSTypeClassMetaType classId;
-    std::vector<std::unique_ptr<OSType>> descriptors;
-
-    OSTypeDescriptor() = default;
-    OSTypeDescriptor(const std::wstring& str)
-      : descriptorName(str) { }
+    std::map<std::string, std::unique_ptr<OSType>> descriptors;
 
     OSTypeKey type() const override {
       return OSTypeKey::Descriptor;
-    }
-
-    ~OSTypeDescriptor() {
-      descriptors.clear();
     }
   };
 

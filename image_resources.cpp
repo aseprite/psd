@@ -194,8 +194,8 @@ OSTypeClassMetaType Decoder::parseDescrVariable()
   const uint32_t classIDLength = read32();
   OSTypeClassMetaType meta;
   if (classIDLength == 0) {
-    meta.keyClassID = read32();
-    TRACE("ClassID: %d", meta.keyClassID);
+    meta.name = std::to_string(read32());
+    TRACE("ClassID: %d\n", meta.keyClassID);
   }
   else {
     meta.name.resize(classIDLength);
@@ -290,63 +290,65 @@ std::unique_ptr<OSType> Decoder::parseAliasType()
 
 std::unique_ptr<OSType> Decoder::parseOsTypeVariable()
 {
-  const OSTypeClassMetaType descMeta = parseDescrVariable();
-  if (descMeta.keyClassID == 0) {
-    return std::unique_ptr<OSType>(new OSTypeDescriptor);
-  }
-
   const uint32_t osTypeInt = read32();
   if (!is_valid_class_type(osTypeInt))
     throw std::runtime_error(
       "invalid class type encountered in descriptor type");
 
   const OSTypeKey osType = static_cast<OSTypeKey>(osTypeInt);
+  std::unique_ptr<OSType> value;
 
   switch (osType) {
     case OSTypeKey::GlobalObject:
     case OSTypeKey::Descriptor:
-      return parseDescriptor();
+      value = parseDescriptor();
+      break;
     case OSTypeKey::Reference:
-      return parseReferenceType();
+      value = parseReferenceType();
+      break;
     case OSTypeKey::List:
-      return parseListType();
+      value = parseListType();
+      break;
     case OSTypeKey::Double:
-      return std::unique_ptr<OSTypeDouble>(new OSTypeDouble(read64()));
+      value.reset(new OSTypeDouble(read64()));
+      break;
     case OSTypeKey::UnitFloat: {
       const uint32_t unit = read32();
-      const double value = read64();
+      const double v = read64();
       if (!is_valid_unit_float(unit))
         throw std::runtime_error(
           "invalid unit float in descriptor type");
 
-      return std::unique_ptr<OSTypeUnitFloat>(
-        new OSTypeUnitFloat(
-          static_cast<OSTypeUnitFloat::Unit>(unit), value));
+      value.reset(new OSTypeUnitFloat(
+          static_cast<OSTypeUnitFloat::Unit>(unit), v));
+      break;
     }
     case OSTypeKey::String:
-      return std::unique_ptr<OSTypeString>(
-        new OSTypeString(getUnicodeString()));
+      value.reset(new OSTypeString(getUnicodeString()));
+      break;
     case OSTypeKey::Enumerated:
-      return parseEnumeratedType();
+      value = parseEnumeratedType();
+      break;
     case OSTypeKey::Long:
-      return std::unique_ptr<OSType>(new OSTypeInt(read32()));
+      value.reset(new OSTypeInt(read32()));
+      break;
     case OSTypeKey::LargeInteger:
-      return std::unique_ptr<OSType>(new OSTypeLargeInt(read64()));
+      value.reset(new OSTypeLargeInt(read64()));
+      break;
     case OSTypeKey::Boolean:
-      return std::unique_ptr<OSType>(new OSTypeBoolean((bool)read8()));
+      value.reset(new OSTypeBoolean((bool)read8()));
+      break;
     case OSTypeKey::GlobalClass:
     case OSTypeKey::ClassType:
-      return parseClassType();
+      value = parseClassType();
+      break;
     case OSTypeKey::Alias:
-      return parseAliasType();
+      value = parseAliasType();
+      break;
     case OSTypeKey::RawData:
-      std::unique_ptr<OSTypeRawData> data(new OSTypeRawData);
-      data->value.resize(descMeta.name.size());
-      std::copy(descMeta.name.begin(), descMeta.name.end(),
-                data->value.begin());
-      return data;
+      throw std::runtime_error("raw data is unimplemented");
   }
-  return nullptr;
+  return value;
 }
 
 std::unique_ptr<OSType> Decoder::parseDescriptor()
@@ -356,10 +358,9 @@ std::unique_ptr<OSType> Decoder::parseDescriptor()
   desc->classId = parseDescrVariable();
 
   const uint32_t nDescriptors = read32();
-  desc->descriptors.reserve(nDescriptors);
-
   for (int i = 0; i < nDescriptors; ++i) {
-    desc->descriptors.emplace_back(parseOsTypeVariable());
+    const OSTypeClassMetaType key = parseDescrVariable();
+    desc->descriptors.emplace(key.name, parseOsTypeVariable());
   }
 
   return desc;
@@ -377,3 +378,4 @@ std::wstring Decoder::getUnicodeString()
 }
 
 } // namespace psd
+

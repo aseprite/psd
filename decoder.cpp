@@ -156,8 +156,28 @@ bool Decoder::readImageResources()
     res.resourceID = resID;
     res.name = name;
     if (resLength) {
-      res.data.resize(resLength);
-      m_file->read(&res.data[0], resLength);
+      if (ImageResource::resIDHasDescriptor(resID)) {
+        const size_t filePos = m_file->tell();
+        try {
+          const uint32_t descVersion = read32();
+          if (descVersion != 16)
+            throw std::runtime_error("unexpected descriptor version");
+
+          const size_t expectedEnd = filePos + resLength;
+          res.descriptor = parseDescriptor();
+          const size_t newPos = m_file->tell();
+          if (newPos != expectedEnd)
+            throw std::runtime_error("unexpected image resource end");
+        }
+        catch (const std::exception& e) {
+          TRACE("%s\n", e.what());
+          m_file->seek(filePos + resLength);
+        }
+      }
+      else {
+        res.data.resize(resLength);
+        m_file->read(&res.data[0], resLength);
+      }
     }
 
     // Padded to make it even
@@ -168,11 +188,6 @@ bool Decoder::readImageResources()
 
     if (m_delegate)
       m_delegate->onImageResource(res);
-
-    // Read descriptor
-    if (ImageResource::resIDHasDescriptor(resID)) {
-      // TODO ...
-    }
 
     length -= (resEnd - resBegin);
   }
