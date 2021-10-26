@@ -227,6 +227,12 @@ namespace psd {
     RealUserSuppliedMask = -3,
   };
 
+  enum class LayerType: uint32_t {
+    LayerImage,
+    LayerGroupStart,
+    LayerGroupEnd
+  };
+
   struct Channel {
     ChannelID channelID;
     uint64_t length;
@@ -404,6 +410,7 @@ namespace psd {
     int32_t top, left, bottom, right;
     std::vector<Channel> channels;
     LayerBlendMode blendMode;
+    LayerType layerType;
     uint8_t opacity;
     uint8_t clipping;
     uint8_t flags;
@@ -523,10 +530,13 @@ namespace psd {
 
   private:
     bool readLayersInfo(LayersInformation& layers);
+    bool readLayersInfo(const uint64_t length, LayersInformation& layers);
     bool readLayerRecord(LayersInformation& layers,
                          LayerRecord& layerRecord);
     bool readGlobalMaskInfo(LayersInformation& layers);
     bool readImage(const ImageData& img);
+    bool readSectionDivider(LayerRecord& layerRecord, const uint64_t length);
+    uint64_t readAdditionalLayerInfo(LayerRecord& layerRecord);
     std::unique_ptr<OSType> parseOsTypeVariable();
     std::unique_ptr<OSType> parseReferenceType();
     std::unique_ptr<OSType> parseDescriptor();

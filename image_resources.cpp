@@ -195,12 +195,10 @@ OSTypeClassMetaType Decoder::parseDescrVariable()
   OSTypeClassMetaType meta;
   if (classIDLength == 0) {
     meta.name = std::to_string(read32());
-    TRACE("ClassID: %d\n", meta.keyClassID);
   }
   else {
     meta.name.resize(classIDLength);
     m_file->read((uint8_t*)&meta.name[0], classIDLength);
-    TRACE("ClassID: %s", meta.name.c_str());
   }
   return meta;
 }

@@ -158,8 +158,7 @@ bool Decoder::readImageResources()
     if (resLength) {
       if (ImageResource::resIDHasDescriptor(resID)) {
         const size_t filePos = m_file->tell();
-        try {
-          const uint32_t descVersion = read32();
+        const uint32_t descVersion = read32();
           if (descVersion != 16)
             throw std::runtime_error("unexpected descriptor version");
 
@@ -168,11 +167,6 @@ bool Decoder::readImageResources()
           const size_t newPos = m_file->tell();
           if (newPos != expectedEnd)
             throw std::runtime_error("unexpected image resource end");
-        }
-        catch (const std::exception& e) {
-          TRACE("%s\n", e.what());
-          m_file->seek(filePos + resLength);
-        }
       }
       else {
         res.data.resize(resLength);
@@ -196,6 +190,93 @@ bool Decoder::readImageResources()
   return (length == 0);
 }
 
+bool Decoder::readSectionDivider(LayerRecord& layerRecord,
+                                 const uint64_t length)
+{
+  // 4 possible values => 0 = any other type of layer,
+  // 1 = open "folder", 2 = closed "folder",
+  // 3 = bounding section divider, hidden in the UI
+  const uint32_t sectionType = read32();
+  if(sectionType > 3)
+    throw std::runtime_error("unexpected section divider encountered");
+  if (sectionType == 1)
+    layerRecord.layerType = LayerType::LayerGroupEnd;
+  else if (sectionType == 3)
+    layerRecord.layerType = LayerType::LayerGroupStart;
+
+  if (length < 12)
+    return true;
+
+  const uint32_t signature = read32();
+  if(signature != PSD_LAYER_INFO_MAGIC_NUMBER)
+    throw std::runtime_error("magic number do not match in section divider");
+
+  const uint32_t bm = read32();
+  const LayerBlendMode blendMode = LayerBlendMode(bm);
+  if (length < 16)
+    return true;
+
+  // Sub type. 0 = normal, 1 = scene group, affects the animation timeline.
+  const uint32_t subType = read32();
+  if (subType != 0 && subType != 1)
+    throw std::runtime_error("invalid subtype in section divider");
+  return true;
+}
+
+uint64_t Decoder::readAdditionalLayerInfo(LayerRecord& layerRecord)
+{
+  const uint32_t signature = read32(); // Magic ("8BIM" or "8B64")
+  if (signature != PSD_LAYER_INFO_MAGIC_NUMBER &&
+    signature != PSD_LAYER_INFO_MAGIC_NUMBER2)
+    return 0;
+
+  const LayerInfoKey key = static_cast<LayerInfoKey>(read32());
+  uint64_t dataLength = 0;
+
+  if ((m_header.version == Version::Psb) &&
+    (key == LayerInfoKey::LMsk ||
+      key == LayerInfoKey::Lr16 ||
+      key == LayerInfoKey::Lr32 ||
+      key == LayerInfoKey::Layr ||
+      key == LayerInfoKey::Mt16 ||
+      key == LayerInfoKey::Mt32 ||
+      key == LayerInfoKey::Mtrn ||
+      key == LayerInfoKey::Alph ||
+      key == LayerInfoKey::FMsk ||
+      key == LayerInfoKey::lnk2 ||
+      key == LayerInfoKey::FEid ||
+      key == LayerInfoKey::FXid ||
+      key == LayerInfoKey::PxSD)) {
+    dataLength = read64();
+  }
+  else {
+    dataLength = read32();
+  }
+
+  const size_t fileBegin = m_file->tell();
+  if (key == LayerInfoKey::lsct) {
+    // Section divider setting (Photoshop 6.0)
+    if (readSectionDivider(layerRecord, dataLength)) {
+      TRACE("section divider read");
+    }
+  }
+
+  const uint64_t origLength = dataLength;
+  if (origLength & 1)
+    ++dataLength;
+
+  TRACE(" tag block %c%c%c%c with length=%" PRId64 " (%" PRId64 ")\n",
+    ((((int)key) >> 24) & 0xff),
+    ((((int)key) >> 16) & 0xff),
+    ((((int)key) >> 8) & 0xff),
+    (((int)key) & 0xff),
+    dataLength, origLength);
+  TRACE("\n");
+
+  m_file->seek(fileBegin + dataLength);
+  return dataLength;
+}
+
 bool Decoder::readLayersAndMask()
 {
   LayersInformation layers;
@@ -214,47 +295,9 @@ bool Decoder::readLayersAndMask()
   if (m_file->tell() < beg+length) {
     TRACE(" Tagged blocks\n");
 
+    LayerRecord layerRecord;
     while ((m_file->tell() - (beg+length)) > 4) {
-      const uint32_t signature = read32(); // Magic ("8BIM" or "8B64")
-      if (signature == PSD_LAYER_INFO_MAGIC_NUMBER ||
-          signature == PSD_LAYER_INFO_MAGIC_NUMBER2) {
-        const LayerInfoKey key = static_cast<LayerInfoKey>(read32());
-        uint64_t dataLength;
-
-        if ((m_header.version == Version::Psb) &&
-            (key == LayerInfoKey::LMsk ||
-             key == LayerInfoKey::Lr16 ||
-             key == LayerInfoKey::Lr32 ||
-             key == LayerInfoKey::Layr ||
-             key == LayerInfoKey::Mt16 ||
-             key == LayerInfoKey::Mt32 ||
-             key == LayerInfoKey::Mtrn ||
-             key == LayerInfoKey::Alph ||
-             key == LayerInfoKey::FMsk ||
-             key == LayerInfoKey::lnk2 ||
-             key == LayerInfoKey::FEid ||
-             key == LayerInfoKey::FXid ||
-             key == LayerInfoKey::PxSD)) {
-          dataLength = read64();
-        }
-        else {
-          dataLength = read32();
-        }
-
-        uint64_t origLength = dataLength;
-        if (origLength & 1)
-          ++dataLength;
-
-        TRACE(" tag block %c%c%c%c with length=%" PRId64 " (%" PRId64 ")\n",
-              ((((int)key)>>24)&0xff),
-              ((((int)key)>>16)&0xff),
-              ((((int)key)>>8)&0xff),
-              (((int)key)&0xff),
-              length, origLength);
-
-        m_file->seek(m_file->tell() + dataLength);
-      }
-      TRACE("\n");
+      readAdditionalLayerInfo(layerRecord);
     }
 
     // TODO
@@ -317,6 +360,11 @@ bool Decoder::readLayersInfo(LayersInformation& layers)
   const uint64_t length = read32or64Length();
   TRACE("Layers Info length=%" PRId64 "\n", length);
 
+  return readLayersInfo(length, layers);
+}
+
+bool Decoder::readLayersInfo(const uint64_t length, LayersInformation& layers)
+{
   // Empty layers section
   if (length == 0)
     return true;
@@ -422,6 +470,7 @@ bool Decoder::readLayerRecord(LayersInformation& layers,
   uint32_t bm = read32();
   layerRecord.blendMode = LayerBlendMode(bm);
   layerRecord.opacity = read8();
+  layerRecord.layerType = LayerType::LayerImage;
 
   TRACE(" blendMode=%d %d %d %d\n",
          ((bm >> 24) & 255),
@@ -456,7 +505,16 @@ bool Decoder::readLayerRecord(LayersInformation& layers,
          nchannels,
          layerRecord.name.c_str());
 
-  m_file->seek(beforeDataPos + length);
+  uint64_t filePos = m_file->tell();
+  const size_t expectedPos = beforeDataPos + length;
+  while (filePos < expectedPos) {
+    const uint64_t bytesProcessed =
+      readAdditionalLayerInfo(layerRecord);
+    if (bytesProcessed == 0)
+      break;
+    filePos += bytesProcessed;
+  }
+  m_file->seek(expectedPos);
   return true;
 }
 
