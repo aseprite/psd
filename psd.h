@@ -227,10 +227,11 @@ namespace psd {
     RealUserSuppliedMask = -3,
   };
 
-  enum class LayerType: uint32_t {
-    LayerImage,
-    LayerGroupStart,
-    LayerGroupEnd
+  enum class SectionType: uint32_t {
+    Others,
+    OpenFolder,
+    CloseFolder,
+    BoundingSection,
   };
 
   struct Channel {
@@ -410,7 +411,7 @@ namespace psd {
     int32_t top, left, bottom, right;
     std::vector<Channel> channels;
     LayerBlendMode blendMode;
-    LayerType layerType;
+    SectionType sectionType;
     uint8_t opacity;
     uint8_t clipping;
     uint8_t flags;
@@ -418,6 +419,8 @@ namespace psd {
 
     bool isTransparencyProtected() const { return flags & 1; }
     bool isVisible() const { return (flags & 2) == 0; }
+    bool isOpenGroup() const { return sectionType == SectionType::BoundingSection; }
+    bool isCloseGroup() const { return sectionType == SectionType::OpenFolder; }
     int width() const { return right - left; }
     int height() const { return bottom - top; }
   };

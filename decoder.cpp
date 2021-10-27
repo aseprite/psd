@@ -196,13 +196,7 @@ bool Decoder::readSectionDivider(LayerRecord& layerRecord,
   // 4 possible values => 0 = any other type of layer,
   // 1 = open "folder", 2 = closed "folder",
   // 3 = bounding section divider, hidden in the UI
-  const uint32_t sectionType = read32();
-  if(sectionType > 3)
-    throw std::runtime_error("unexpected section divider encountered");
-  if (sectionType == 1)
-    layerRecord.layerType = LayerType::LayerGroupEnd;
-  else if (sectionType == 3)
-    layerRecord.layerType = LayerType::LayerGroupStart;
+  layerRecord.sectionType = SectionType(read32());
 
   if (length < 12)
     return true;
@@ -470,7 +464,7 @@ bool Decoder::readLayerRecord(LayersInformation& layers,
   uint32_t bm = read32();
   layerRecord.blendMode = LayerBlendMode(bm);
   layerRecord.opacity = read8();
-  layerRecord.layerType = LayerType::LayerImage;
+  layerRecord.sectionType = SectionType::Others;
 
   TRACE(" blendMode=%d %d %d %d\n",
          ((bm >> 24) & 255),
