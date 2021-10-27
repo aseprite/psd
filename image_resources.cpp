@@ -376,4 +376,3 @@ std::wstring Decoder::getUnicodeString()
 }
 
 } // namespace psd
-
