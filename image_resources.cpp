@@ -213,7 +213,7 @@ OSTypeClassMetaType Decoder::parseDescrVariable()
   return meta;
 }
 
-std::unique_ptr<OSType> Decoder::parseReferenceType()
+std::unique_ptr<OSTypeReference> Decoder::parseReferenceType()
 {
   const uint32_t nItems = read32();
   std::unique_ptr<OSTypeReference> ref(new OSTypeReference);
@@ -263,7 +263,7 @@ std::unique_ptr<OSType> Decoder::parseReferenceType()
   return ref;
 }
 
-std::unique_ptr<OSType> Decoder::parseListType()
+std::unique_ptr<OSTypeList> Decoder::parseListType()
 {
   const uint32_t nLength = read32();
   std::unique_ptr<OSTypeList> list(new OSTypeList);
@@ -273,7 +273,7 @@ std::unique_ptr<OSType> Decoder::parseListType()
   return list;
 }
 
-std::unique_ptr<OSType> Decoder::parseClassType()
+std::unique_ptr<OSTypeClass> Decoder::parseClassType()
 {
   std::unique_ptr<OSTypeClass> klass(new OSTypeClass);
   klass->className = getUnicodeString();
@@ -281,7 +281,7 @@ std::unique_ptr<OSType> Decoder::parseClassType()
   return klass;
 }
 
-std::unique_ptr<OSType> Decoder::parseEnumeratedType()
+std::unique_ptr<OSTypeEnum> Decoder::parseEnumeratedType()
 {
   std::unique_ptr<OSTypeEnum> e(new OSTypeEnum);
   e->typeID = parseDescrVariable();
@@ -289,11 +289,11 @@ std::unique_ptr<OSType> Decoder::parseEnumeratedType()
   return e;
 }
 
-std::unique_ptr<OSType> Decoder::parseAliasType()
+std::unique_ptr<OSTypeAlias> Decoder::parseAliasType()
 {
   const uint32_t length = read32();
   m_file->seek(m_file->tell() + length);
-  return std::unique_ptr<OSType>(new OSTypeAlias);
+  return std::unique_ptr<OSTypeAlias>(new OSTypeAlias);
 }
 
 std::unique_ptr<OSType> Decoder::parseOsTypeVariable()
@@ -359,7 +359,7 @@ std::unique_ptr<OSType> Decoder::parseOsTypeVariable()
   return value;
 }
 
-std::unique_ptr<OSType> Decoder::parseDescriptor()
+std::unique_ptr<OSTypeDescriptor> Decoder::parseDescriptor()
 {
   std::unique_ptr<OSTypeDescriptor> desc(new OSTypeDescriptor);
   desc->descriptorName = getUnicodeString();

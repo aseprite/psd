@@ -541,12 +541,12 @@ namespace psd {
     bool readSectionDivider(LayerRecord& layerRecord, const uint64_t length);
     uint64_t readAdditionalLayerInfo(LayerRecord& layerRecord);
     std::unique_ptr<OSType> parseOsTypeVariable();
-    std::unique_ptr<OSType> parseReferenceType();
-    std::unique_ptr<OSType> parseDescriptor();
-    std::unique_ptr<OSType> parseListType();
-    std::unique_ptr<OSType> parseClassType();
-    std::unique_ptr<OSType> parseEnumeratedType();
-    std::unique_ptr<OSType> parseAliasType();
+    std::unique_ptr<OSTypeReference> parseReferenceType();
+    std::unique_ptr<OSTypeDescriptor> parseDescriptor();
+    std::unique_ptr<OSTypeList> parseListType();
+    std::unique_ptr<OSTypeClass> parseClassType();
+    std::unique_ptr<OSTypeEnum> parseEnumeratedType();
+    std::unique_ptr<OSTypeAlias> parseAliasType();
     OSTypeClassMetaType parseDescrVariable();
 
     std::wstring getUnicodeString();
