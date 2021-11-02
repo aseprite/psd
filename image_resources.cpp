@@ -115,6 +115,15 @@ const char* ImageResource::resIDString(uint16_t resID)
   return "";
 }
 
+std::string key_to_string(const uint32_t key)
+{
+  std::string str(4, '0');
+  for (int i=0; i<4; ++i) {
+    str[3-i] = char(key>>(8*i));
+  }
+  return str;
+}
+
 // static
 bool ImageResource::resIDHasDescriptor(uint16_t resID)
 {
@@ -194,7 +203,8 @@ OSTypeClassMetaType Decoder::parseDescrVariable()
   const uint32_t classIDLength = read32();
   OSTypeClassMetaType meta;
   if (classIDLength == 0) {
-    meta.name = std::to_string(read32());
+    const uint32_t key = read32();
+    meta.name = key_to_string(key);
   }
   else {
     meta.name.resize(classIDLength);
