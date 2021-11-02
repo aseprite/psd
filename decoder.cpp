@@ -151,22 +151,29 @@ bool Decoder::readImageResources()
 
     const std::string name = readPascalString(2);
     const uint32_t resLength = read32();
+    const size_t filePos = m_file->tell();
 
     ImageResource res;
     res.resourceID = resID;
     res.name = name;
     if (resLength) {
       if (ImageResource::resIDHasDescriptor(resID)) {
-        const size_t filePos = m_file->tell();
         const uint32_t descVersion = read32();
-          if (descVersion != 16)
-            throw std::runtime_error("unexpected descriptor version");
-
-          const size_t expectedEnd = filePos + resLength;
+        if (descVersion == 16)
           res.descriptor = parseDescriptor();
-          const size_t newPos = m_file->tell();
-          if (newPos != expectedEnd)
-            throw std::runtime_error("unexpected image resource end");
+      }
+      else if (resID == 4003) {
+        // This section is usually where the animation info is kept.
+        // Details of how it is parsed is in readAnimatedDataSection()
+        read32(); // An unknown resource, name is written backward
+        read32(); // Unknown block
+        read32(); // Another unknown block (a size?)
+        const uint32_t signature = read32();
+        if (signature == PSD_LAYER_INFO_MAGIC_NUMBER) {
+          const uint32_t key = read32();
+          if (key == (uint32_t)ImageResourceSection::ANDS)
+            res.descriptor = readAnimatedDataSection();
+        }
       }
       else {
         res.data.resize(resLength);
@@ -174,6 +181,7 @@ bool Decoder::readImageResources()
       }
     }
 
+    m_file->seek(filePos+resLength);
     // Padded to make it even
     if (resLength & 1)
       read8();
@@ -190,6 +198,108 @@ bool Decoder::readImageResources()
   return (length == 0);
 }
 
+double Decoder::getTypeNumber(const std::unique_ptr<OSType>& v)
+{
+  if (v->type() == OSTypeKey::LargeInteger) {
+    return static_cast<const OSTypeLargeInt*>(v.get())->value;
+  }
+  else if (v->type() == OSTypeKey::Long) {
+    return static_cast<const OSTypeInt*>(v.get())->value;
+  }
+  else if (v->type() == OSTypeKey::Double) {
+    return static_cast<const OSTypeDouble*>(v.get())->value;
+  }
+  throw std::runtime_error("wrong descriptor type");
+};
+
+// the parsing used here is written thanks to the description given here
+// https://community.adobe.com/t5/photoshop-ecosystem-discussions/how-to-get-animation-frame-id/m-p/8790051#M68134
+std::unique_ptr<OSTypeDescriptor> Decoder::readAnimatedDataSection()
+{
+  read32(); // data length
+
+  const uint32_t descVersion = read32();
+  if (descVersion != 16)
+    return nullptr;
+
+  auto desc = parseDescriptor();
+  if (!desc)
+    return nullptr;
+
+  using DescriptorMap = OSTypeDescriptor::DescriptorMap;
+  const DescriptorMap& descrs = desc->descriptors;
+  const DescriptorMap::const_iterator frameStateIter =
+    descrs.find("FSts");
+  const DescriptorMap::const_iterator framesIter =
+    descrs.find("FrIn");
+
+  uint32_t activeFrameIndex = 0;
+  if (frameStateIter != descrs.cend() &&
+    frameStateIter->second->type() == OSTypeKey::List) {
+    const std::vector<std::unique_ptr<OSType>>& frameStates =
+      static_cast<const OSTypeList*>(
+        frameStateIter->second.get())->values;
+    if (frameStates.size() == 1 &&
+      frameStates[0]->type() == OSTypeKey::Descriptor) {
+      const DescriptorMap& frameStatesDesc =
+        static_cast<const OSTypeDescriptor*>(
+          frameStates[0].get())->descriptors;
+      const DescriptorMap::const_iterator activeIndexIter =
+        frameStatesDesc.find("AFrm");
+      if (activeIndexIter != frameStatesDesc.cend()) {
+        activeFrameIndex = getTypeNumber(activeIndexIter->second);
+      }
+    }
+  }
+
+  if (framesIter == descrs.cend())
+    return nullptr;
+
+  const auto& absFrameList = framesIter->second;
+  if (absFrameList->type() != OSTypeKey::List)
+    return nullptr;
+
+  const OSTypeList* frameList =
+    static_cast<const OSTypeList*>(absFrameList.get());
+
+  std::vector<FrameInformation> frameInfoList;
+  if (!frameList->values.empty())
+    frameInfoList.reserve(frameList->values.size());
+
+  for (const auto& absFrameValue : frameList->values) {
+    if (absFrameValue->type() == OSTypeKey::Descriptor) {
+      const OSTypeDescriptor* absFrameDesc =
+        static_cast<const OSTypeDescriptor*>(
+          absFrameValue.get());
+      const DescriptorMap& framesDescrs = absFrameDesc->descriptors;
+      const DescriptorMap::const_iterator frameDurationIter =
+        framesDescrs.find("FrDl");
+      const DescriptorMap::const_iterator frameIDIter =
+        framesDescrs.find("FrID");
+      const DescriptorMap::const_iterator frameGAIter =
+        framesDescrs.find("FrGA");
+
+      FrameInformation frameInfo;
+      if (frameDurationIter != framesDescrs.cend())
+        frameInfo.duration = getTypeNumber(
+          frameDurationIter->second);
+      if (frameIDIter != framesDescrs.cend())
+        frameInfo.id = getTypeNumber(frameIDIter->second);
+      if (frameGAIter != framesDescrs.cend())
+        frameInfo.ga = getTypeNumber(frameGAIter->second);
+
+      TRACE("Frame ID: %d, Duration: %d, GA: %f\n", frameInfo.id,
+        frameInfo.duration, frameInfo.ga);
+      frameInfoList.push_back(std::move(frameInfo));
+    }
+  }
+
+  if (m_delegate)
+    m_delegate->onFramesData(frameInfoList, activeFrameIndex);
+  return desc;
+}
+
+// TODO: what to do with the data read in this segment?
 bool Decoder::readSectionDivider(LayerRecord& layerRecord,
                                  const uint64_t length)
 {
@@ -214,6 +324,126 @@ bool Decoder::readSectionDivider(LayerRecord& layerRecord,
   const uint32_t subType = read32();
   if (subType != 0 && subType != 1)
     throw std::runtime_error("invalid subtype in section divider");
+  return true;
+}
+
+// TODO: Decide what to do with the information obtained
+// TODO: Determine how the information relates to the timeline
+bool Decoder::readLayerTMLNSection(LayerRecord& layerRecord)
+{
+  using DescriptorMap = OSTypeDescriptor::DescriptorMap;
+
+  const uint32_t descVersion = read32();
+  if (descVersion != 16)
+    return false;
+
+  const auto descriptor = parseDescriptor();
+  if (!descriptor)
+    return false;
+
+  const DescriptorMap& descMap = descriptor->descriptors;
+  const auto timeScopeIter = descMap.find("timeScope");
+  if (timeScopeIter == descMap.cend() ||
+    timeScopeIter->second->type() != OSTypeKey::Descriptor)
+    return false;
+
+  const DescriptorMap& timeScope = static_cast<const OSTypeDescriptor*>(
+    timeScopeIter->second.get())->descriptors;
+  for (const auto& timeScopeKeyValue : timeScope) {
+    if (timeScopeKeyValue.second->type() != OSTypeKey::Descriptor)
+      continue;
+    const std::string& key = timeScopeKeyValue.first;
+    const DescriptorMap& value = static_cast<const OSTypeDescriptor*>(
+      timeScopeKeyValue.second.get())->descriptors;
+    const auto numeratorIter = value.find("numerator");
+    const auto denominatorIter = value.find("denominator");
+
+    uint32_t numerator = 0, denominator = 0;
+
+    if (numeratorIter != value.cend())
+      numerator = getTypeNumber(numeratorIter->second);
+    if (denominatorIter != value.cend())
+      denominator = getTypeNumber(denominatorIter->second);
+    TRACE("Numerator: %d, Denominator: %d\n", numerator, denominator);
+  }
+  return true;
+}
+
+// TODO: Decide what to do with the information obtained
+bool Decoder::readLayerCUSTSection(LayerRecord& layerRecord)
+{
+  using DescriptorMap = OSTypeDescriptor::DescriptorMap;
+
+  const uint32_t descVersion = read32();
+  if (descVersion != 16)
+    return false;
+
+  const auto descriptor = parseDescriptor();
+  if (!descriptor)
+    return false;
+
+  const DescriptorMap& metadataMap = descriptor->descriptors;
+  const auto layerTimeIter = metadataMap.find("layerTime");
+  const double layerTime =
+    layerTimeIter == metadataMap.cend() ? 0.0 :
+    getTypeNumber(layerTimeIter->second);
+  return true;
+}
+
+bool Decoder::readLayerMLSTSection(LayerRecord& layerRecord)
+{
+  using DescriptorMap = OSTypeDescriptor::DescriptorMap;
+
+  const uint32_t descVersion = read32();
+  const auto descriptor = parseDescriptor();
+  if (!descriptor)
+    return false;
+
+  const DescriptorMap& descMap = descriptor->descriptors;
+  const auto layerIDIter = descMap.find("LaID");
+  const auto layerStatesIter = descMap.find("LaSt");
+
+  if (layerIDIter == descMap.cend())
+    return false;
+
+  const uint32_t layerID = getTypeNumber(layerIDIter->second);
+  if (layerRecord.layerID != layerID ||
+    layerStatesIter == descMap.cend())
+    return false;
+
+  if (layerStatesIter->second->type() != OSTypeKey::List)
+    return false;
+
+  const auto layerStates = static_cast<const OSTypeList*>(
+    layerStatesIter->second.get());
+
+  for (const auto& layerState : layerStates->values) {
+    if (layerState->type() != OSTypeKey::Descriptor)
+      continue;
+
+    const DescriptorMap& layerDesc = static_cast<
+      const OSTypeDescriptor*>(layerState.get())->descriptors;
+    const auto frameListIter = layerDesc.find("FrLs");
+    const auto layerEnabledIter = layerDesc.find("enab");
+    const bool isLayerVisible =
+      layerEnabledIter == layerDesc.cend() ||
+      static_cast<OSTypeBoolean*>(
+        layerEnabledIter->second.get())->value;
+
+    TRACE("Layer is enabled here: %d\n", isLayerVisible);
+
+    if (frameListIter != layerDesc.cend() &&
+      frameListIter->second->type() == OSTypeKey::List) {
+      const auto& frameList = static_cast<const OSTypeList*>(
+        frameListIter->second.get())->values;
+      for (const auto& frameIDPtr : frameList) {
+        LayerRecord::FrameVisibility inFrame;
+        inFrame.frameID = getTypeNumber(frameIDPtr);
+        inFrame.isVisibleInFrame = isLayerVisible;
+        layerRecord.inFrames.push_back(std::move(inFrame));
+      }
+    }
+  }
   return true;
 }
 
@@ -252,6 +482,76 @@ uint64_t Decoder::readAdditionalLayerInfo(LayerRecord& layerRecord)
     // Section divider setting (Photoshop 6.0)
     if (readSectionDivider(layerRecord, dataLength)) {
       TRACE("section divider read");
+    }
+  }
+  else if (key == LayerInfoKey::cinf) {
+    const uint32_t version = read32();
+    if (version != 16)
+      throw std::runtime_error("The version for cinf doesn't match");
+    auto descriptor = parseDescriptor();
+    if (descriptor) {
+      TRACE("Number of desc: %d\n", version);
+    }
+  }
+  else if (key == LayerInfoKey::luni) {
+    const std::wstring layerName = getUnicodeString();
+    if (!layerName.empty()) {
+      TRACE("Layer name parsed: %ls\n", layerName.c_str());
+    }
+  }
+  else if (key == LayerInfoKey::lyid) {
+    layerRecord.layerID = read32();
+  }
+  else if (key == LayerInfoKey::SoLE) {
+    const LayerInfoKey type = LayerInfoKey(read32());
+    const uint32_t version = read32();
+    if (type == LayerInfoKey::SoLd &&
+      (version == 4 || version == 5)) {
+      auto desc = parseDescriptor();
+      if (desc) {
+        TRACE("Descriptor name: %ls\n", desc->descriptorName.c_str());
+        TRACE("Descriptor size: %zu\n", desc->descriptors.size());
+      }
+    }
+  }
+  else if (key == LayerInfoKey::Lr16 ||
+    key == LayerInfoKey::Lr32 ||
+    key == LayerInfoKey::Layr) {
+    LayersInformation layersInfo;
+    if (readLayersInfo(dataLength, layersInfo)) {
+      TRACE("Number of layers read: %zu\n",
+        layersInfo.layers.size());
+    }
+  }
+  else if (key == LayerInfoKey::anFX) {
+    const uint32_t descVersion = read32();
+    if (descVersion == 16) {
+      auto desc = parseDescriptor();
+      if (desc) {
+        TRACE("Descriptor name: %ls\n", desc->descriptorName.c_str());
+        TRACE("Descriptor size: %zu\n", desc->descriptors.size());
+      }
+    }
+  }
+  else if (key == LayerInfoKey::shmd) {
+    const uint32_t metadataCount = read32();
+    for (uint32_t i = 0; i < metadataCount; ++i) {
+      const uint32_t sig = read32();
+      if (sig != PSD_LAYER_INFO_MAGIC_NUMBER)
+        throw std::runtime_error("magic number does not match");
+
+      const uint32_t metaKey = read32();
+      read8(); // this is supposed to be a kind of "duplicate" data???
+      read16(); read8(); // 3 bytes padding
+      const uint32_t metaDataLength = read32();
+      const size_t filePos = m_file->tell();
+      if (metaKey == (uint32_t)LayerInfoKey::mlst)
+        readLayerMLSTSection(layerRecord);
+      else if (metaKey == (uint32_t)LayerInfoKey::cust)
+        readLayerCUSTSection(layerRecord);
+      else if (metaKey == (uint32_t)LayerInfoKey::tmln)
+        readLayerTMLNSection(layerRecord);
+      m_file->seek(filePos + metaDataLength);
     }
   }
 
