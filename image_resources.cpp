@@ -366,9 +366,10 @@ std::unique_ptr<OSTypeDescriptor> Decoder::parseDescriptor()
   desc->classId = parseDescrVariable();
 
   const uint32_t nDescriptors = read32();
+  auto& descriptor = desc->descriptor.items();
   for (int i = 0; i < nDescriptors; ++i) {
     const OSTypeClassMetaType key = parseDescrVariable();
-    desc->descriptors.emplace(key.name, parseOsTypeVariable());
+    descriptor.emplace(key.name, parseOsTypeVariable());
   }
 
   return desc;

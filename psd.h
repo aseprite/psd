@@ -63,12 +63,12 @@ namespace psd {
     std::vector<uint8_t> data;
   };
 
-  struct OSType;
+  struct OSTypeDescriptor;
   struct ImageResource {
     uint16_t resourceID;
     std::string name;
     std::vector<uint8_t> data;
-    std::unique_ptr<OSType> descriptor;
+    std::unique_ptr<OSTypeDescriptor> descriptor;
 
     static const char* resIDString(uint16_t resID);
     static bool resIDHasDescriptor(uint16_t resID);
@@ -147,6 +147,7 @@ namespace psd {
     clbl = PSD_DEFINE_DWORD('c', 'l', 'b', 'l'),
     clrL = PSD_DEFINE_DWORD('c', 'l', 'r', 'L'),
     curv = PSD_DEFINE_DWORD('c', 'u', 'r', 'v'),
+    cust = PSD_DEFINE_DWORD('c', 'u', 's', 't'),
     expA = PSD_DEFINE_DWORD('e', 'x', 'p', 'A'),
     ffxi = PSD_DEFINE_DWORD('f', 'f', 'x', 'i'),
     fxrp = PSD_DEFINE_DWORD('f', 'x', 'r', 'p'),
@@ -170,6 +171,7 @@ namespace psd {
     lyid = PSD_DEFINE_DWORD('l', 'y', 'i', 'd'),
     lyvr = PSD_DEFINE_DWORD('l', 'y', 'v', 'r'),
     mixr = PSD_DEFINE_DWORD('m', 'i', 'x', 'r'),
+    mlst = PSD_DEFINE_DWORD('m', 'l', 's', 't'),
     nvrt = PSD_DEFINE_DWORD('n', 'v', 'r', 't'),
     phfl = PSD_DEFINE_DWORD('p', 'h', 'f', 'l'),
     plLd = PSD_DEFINE_DWORD('p', 'l', 'L', 'd'),
@@ -180,6 +182,7 @@ namespace psd {
     shpa = PSD_DEFINE_DWORD('s', 'h', 'p', 'a'),
     sn2P = PSD_DEFINE_DWORD('s', 'n', '2', 'P'),
     thrs = PSD_DEFINE_DWORD('t', 'h', 'r', 's'),
+    tmln = PSD_DEFINE_DWORD('t', 'm', 'l', 'n'),
     tsly = PSD_DEFINE_DWORD('t', 's', 'l', 'y'),
     tySh = PSD_DEFINE_DWORD('t', 'y', 'S', 'h'),
     vibA = PSD_DEFINE_DWORD('v', 'i', 'b', 'A'),
@@ -217,6 +220,10 @@ namespace psd {
     RefName = PSD_DEFINE_DWORD('n', 'a', 'm', 'e'),
   };
 
+  enum class ImageResourceSection : uint32_t {
+    ANDS = PSD_DEFINE_DWORD('A', 'n', 'D', 's'),
+  };
+
   enum class ChannelID : int {
     Red = 0,
     Green = 1,
@@ -241,6 +248,7 @@ namespace psd {
 
   struct OSType {
     virtual OSTypeKey type() const = 0;
+    virtual double numberValue() const { return 0.0; }
     virtual ~OSType() { }
   };
 
@@ -249,6 +257,7 @@ namespace psd {
   };
 
   struct OSTypeUnitFloat : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::UnitFloat;
     enum class Unit {
       Angle = PSD_DEFINE_DWORD('#', 'A', 'n', 'g'), // base degrees
       Density = PSD_DEFINE_DWORD('#', 'R', 's', 'l'), // base per inch
@@ -265,151 +274,170 @@ namespace psd {
       : unit(u)
       , value(v)
     { }
-    OSTypeKey type() const override {
-      return OSTypeKey::UnitFloat;
-    }
+    OSTypeKey type() const override { return kType; }
   };
 
   struct OSTypeDouble : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::Double;
     double value = 0.0;
 
     OSTypeDouble(double v): value(v) { }
-    OSTypeKey type() const override {
-      return OSTypeKey::Double;
-    }
+    OSTypeKey type() const override { return kType; }
+    double numberValue() const override { return value; }
   };
 
   struct OSTypeClass : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::ClassType;
     std::wstring className;
     OSTypeClassMetaType meta;
 
-    OSTypeKey type() const override {
-      return OSTypeKey::ClassType;
-    }
+    OSTypeKey type() const override { return kType; }
   };
 
   struct OSTypeString : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::String;
     std::wstring value;
 
     OSTypeString(const std::wstring& v): value(v) { }
-    OSTypeKey type() const override {
-      return OSTypeKey::String;
-    }
+    OSTypeKey type() const override { return kType; }
   };
 
   struct OSTypeEnumeratedRef : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::RefEnum;
     std::wstring refClassID;
     OSTypeClassMetaType classID;
     OSTypeClassMetaType typeID;
     OSTypeClassMetaType enumValue;
 
-    OSTypeKey type() const override {
-      return OSTypeKey::RefEnum;
-    }
+    OSTypeKey type() const override { return kType; }
   };
 
   struct OSTypeOffset : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::RefOffset;
     std::wstring offsetName;
     OSTypeClassMetaType classID;
     uint32_t value = 0;
 
-    OSTypeKey type() const override {
-      return OSTypeKey::RefOffset;
-    }
+    OSTypeKey type() const override { return kType; }
   };
 
   struct OSTypeBoolean : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::Boolean;
     bool value = false;
 
     OSTypeBoolean(bool v): value(v) { }
-    OSTypeKey type() const override {
-      return OSTypeKey::Boolean;
-    }
+    OSTypeKey type() const override { return kType; }
   };
 
   struct OSTypeAlias : public OSType {
-    OSTypeKey type() const override {
-      return OSTypeKey::Alias;
-    }
+    static constexpr OSTypeKey kType = OSTypeKey::Alias;
+    OSTypeKey type() const override { return kType; }
   };
 
   struct OSTypeList : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::List;
     std::vector<std::unique_ptr<OSType>> values;
 
-    OSTypeKey type() const override {
-      return OSTypeKey::List;
-    }
-    ~OSTypeList() {
-      values.clear();
-    }
+    OSTypeKey type() const override { return kType; }
   };
 
   struct OSTypeLargeInt : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::LargeInteger;
     std::uint64_t value = 0;
 
     OSTypeLargeInt(uint64_t v): value(v) { }
-    OSTypeKey type() const override {
-      return OSTypeKey::LargeInteger;
-    }
+    OSTypeKey type() const override { return kType; }
+    double numberValue() const override { return value; }
   };
 
   struct OSTypeInt : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::Long;
     std::uint32_t value = 0;
 
     OSTypeInt(uint32_t v): value(v) { }
-    OSTypeKey type() const override {
-      return OSTypeKey::Long;
-    }
+    OSTypeKey type() const override { return kType; }
+    double numberValue() const override { return value; }
   };
 
   struct OSTypeRawData : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::RawData;
     std::vector<uint8_t> value;
 
-    OSTypeKey type() const override {
-      return OSTypeKey::RawData;
-    }
+    OSTypeKey type() const override { return kType; }
   };
 
   struct OSTypeProperty : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::RefProperty;
     std::wstring propName;
     OSTypeClassMetaType classID;
     OSTypeClassMetaType keyID;
 
-    OSTypeKey type() const override {
-      return OSTypeKey::RefProperty;
+    OSTypeKey type() const override { return kType; }
+  };
+
+  class DescriptorMap {
+  public:
+    using Map = std::map<std::string, std::unique_ptr<OSType>>;
+
+    template<typename T>
+    const T* getValue(const std::string& key) const {
+      const auto ptr = find(key);
+      if (!ptr || ptr->type() != T::kType)
+        return nullptr;
+      return static_cast<const T*>(ptr);
     }
+
+    const OSType* find(const std::string& key) const {
+      const auto iter = m_items.find(key);
+      if (iter == m_items.cend())
+        return nullptr;
+      return iter->second.get();
+    }
+
+    Map::size_type size() const { return m_items.size(); }
+    Map& items() { return m_items; }
+    const Map& items() const { return m_items; }
+
+  private:
+    Map m_items;
   };
 
   struct OSTypeDescriptor : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::Descriptor;
     std::wstring descriptorName;
     OSTypeClassMetaType classId;
-    std::map<std::string, std::unique_ptr<OSType>> descriptors;
+    DescriptorMap descriptor;
 
-    OSTypeKey type() const override {
-      return OSTypeKey::Descriptor;
-    }
+    OSTypeKey type() const override { return kType; }
   };
 
   struct OSTypeEnum : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::Enumerated;
     OSTypeClassMetaType typeID;
     OSTypeClassMetaType enumValue;
 
-    OSTypeKey type() const override {
-      return OSTypeKey::Enumerated;
-    }
+    OSTypeKey type() const override { return kType; }
   };
 
   struct OSTypeReference : public OSType {
+    static constexpr OSTypeKey kType = OSTypeKey::Reference;
     std::vector<std::unique_ptr<OSType>> refs;
 
-    OSTypeKey type() const override {
-      return OSTypeKey::Reference;
-    }
+    OSTypeKey type() const override { return kType; }
   };
 
   struct LayerRecord {
+    // structure to hold the visibility of layer in each
+    // frame in an animation, if any.
+    struct FrameVisibility {
+      uint32_t frameID;
+      bool     isVisibleInFrame;
+    };
+
     int32_t top, left, bottom, right;
+    uint32_t layerID;
     std::vector<Channel> channels;
+    std::vector<FrameVisibility> inFrames;
     LayerBlendMode blendMode;
     SectionType sectionType;
     uint8_t opacity;
@@ -439,6 +467,12 @@ namespace psd {
   struct LayersInformation {
     std::vector<LayerRecord> layers;
     GlobalMaskInfo maskInfo;
+  };
+
+  struct FrameInformation {
+    uint32_t id = 0;
+    uint32_t duration = 0;
+    double ga = 0.0;
   };
 
   enum class CompressionMethod {
@@ -506,7 +540,8 @@ namespace psd {
     virtual void onImageData(const ImageData& imageData) { }
     virtual void onBeginLayer(const LayerRecord& layer) { }
     virtual void onEndLayer(const LayerRecord& layer) { }
-
+    virtual void onFramesData(const std::vector<FrameInformation>& framesInfo,
+                              const uint32_t activeFrameIndex) { }
     // Function to read image data (from layers or from the whole
     // document).
     virtual void onBeginImage(const ImageData& img) { }
@@ -539,7 +574,11 @@ namespace psd {
     bool readGlobalMaskInfo(LayersInformation& layers);
     bool readImage(const ImageData& img);
     bool readSectionDivider(LayerRecord& layerRecord, const uint64_t length);
+    bool readLayerMLSTSection(LayerRecord& layerRecord);
+    bool readLayerTMLNSection(LayerRecord& layerRecord);
+    bool readLayerCUSTSection(LayerRecord& layerRecord);
     uint64_t readAdditionalLayerInfo(LayerRecord& layerRecord);
+    std::unique_ptr<OSTypeDescriptor> readAnimatedDataSection();
     std::unique_ptr<OSType> parseOsTypeVariable();
     std::unique_ptr<OSTypeReference> parseReferenceType();
     std::unique_ptr<OSTypeDescriptor> parseDescriptor();
@@ -548,7 +587,6 @@ namespace psd {
     std::unique_ptr<OSTypeEnum> parseEnumeratedType();
     std::unique_ptr<OSTypeAlias> parseAliasType();
     OSTypeClassMetaType parseDescrVariable();
-
     std::wstring getUnicodeString();
 
     uint8_t read8() { return m_file->read8(); }
