@@ -10,10 +10,11 @@
 
 #include <cstdint>
 #include <cstdio>
-#include <string>
-#include <vector>
 #include <map>
 #include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace psd {
 
@@ -247,9 +248,17 @@ namespace psd {
   };
 
   struct OSType {
+    virtual ~OSType() { }
     virtual OSTypeKey type() const = 0;
     virtual double numberValue() const { return 0.0; }
-    virtual ~OSType() { }
+
+    template<typename T>
+    const T* as() const {
+      if (type() == T::kType)
+        return static_cast<const T*>(this);
+      else
+        throw std::runtime_error("Invalid cast");
+    }
   };
 
   struct OSTypeClassMetaType {

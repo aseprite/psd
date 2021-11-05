@@ -220,8 +220,7 @@ std::unique_ptr<OSTypeDescriptor> Decoder::readAnimatedDataSection()
     const auto& frameStates = framesStatePtr->values;
     if (frameStates.size() == 1) {
       const DescriptorMap& frameStatesDesc =
-        static_cast<const OSTypeDescriptor*>(
-          frameStates[0].get())->descriptor;
+          frameStates[0]->as<OSTypeDescriptor>()->descriptor;
       const auto activeIndexPtr = frameStatesDesc.find("AFrm");
       if (activeIndexPtr)
         activeFrameIndex = activeIndexPtr->numberValue();
@@ -239,8 +238,7 @@ std::unique_ptr<OSTypeDescriptor> Decoder::readAnimatedDataSection()
   for (const auto& absFrameValue : frameListPtr->values) {
     if (absFrameValue->type() == OSTypeKey::Descriptor) {
       const DescriptorMap& frameDescriptor =
-        static_cast<const OSTypeDescriptor*>(
-          absFrameValue.get())->descriptor;
+        absFrameValue->as<OSTypeDescriptor>()->descriptor;
       const auto frameDuration = frameDescriptor.find("FrDl");
       const auto frameID = frameDescriptor.find("FrID");
       const auto frameGA = frameDescriptor.find("FrGA");
@@ -314,8 +312,8 @@ bool Decoder::readLayerTMLNSection(LayerRecord& layerRecord)
     if (timeScopeKeyValue.second->type() != OSTypeKey::Descriptor)
       continue;
     const std::string& key = timeScopeKeyValue.first;
-    const DescriptorMap& value = static_cast<const OSTypeDescriptor*>(
-      timeScopeKeyValue.second.get())->descriptor;
+    const DescriptorMap& value =
+      timeScopeKeyValue.second->as<OSTypeDescriptor>()->descriptor;
     const auto numeratorPtr = value.find("numerator");
     const auto denominatorPtr = value.find("denominator");
 
@@ -372,8 +370,7 @@ bool Decoder::readLayerMLSTSection(LayerRecord& layerRecord)
     if (layerState->type() != OSTypeKey::Descriptor)
       continue;
 
-    const auto& layerDesc = static_cast<const OSTypeDescriptor*>(
-      layerState.get())->descriptor;
+    const auto& layerDesc = layerState->as<OSTypeDescriptor>()->descriptor;
     const auto frameListPtr =
       layerDesc.getValue<OSTypeList>("FrLs");
     const auto layerEnabledPtr =
