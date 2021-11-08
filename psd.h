@@ -435,6 +435,45 @@ namespace psd {
     OSTypeKey type() const override { return kType; }
   };
 
+  struct Bound {
+    uint32_t top = 0;
+    uint32_t left = 0;
+    uint32_t bottom = 0;
+    uint32_t right = 0;
+  };
+
+  struct SliceKey {
+    uint32_t sliceID = 0;
+    uint32_t groupID = 0;
+    uint32_t origin = 0;
+    uint32_t assocLayerID = 0; // only available if origin is 1
+    uint32_t type = 0;
+    uint32_t horizontalAlignment = 0;
+    uint32_t verticalAlignment = 0;
+    Bound    bound;
+    uint8_t  alpha = 0;
+    uint8_t  red = 0;
+    uint8_t  green = 0;
+    uint8_t  blue = 0;
+    bool     celTextIsHTML = false;
+    std::wstring name;
+    std::wstring url;
+    std::wstring target;
+    std::wstring message;
+    std::wstring altTag;
+    std::wstring celText;
+  };
+
+  struct Slices {
+    Bound bound;
+    std::wstring groupName;
+    std::vector<SliceKey> sliceKeys;
+    // PS 7.0 added a descriptor at the end of the block.
+    // If available, user may use `Decoder::getSlices()` to
+    // decode this data and get a `SliceData` object from it
+    std::shared_ptr<OSTypeDescriptor> desc;
+  };
+
   struct LayerRecord {
     // structure to hold the visibility of layer in each
     // frame in an animation, if any.
@@ -549,6 +588,7 @@ namespace psd {
     virtual void onImageData(const ImageData& imageData) { }
     virtual void onBeginLayer(const LayerRecord& layer) { }
     virtual void onEndLayer(const LayerRecord& layer) { }
+    virtual void onSlicesData(const Slices& slices) { }
     virtual void onFramesData(const std::vector<FrameInformation>& framesInfo,
                               const uint32_t activeFrameIndex) { }
     // Function to read image data (from layers or from the whole
@@ -574,7 +614,7 @@ namespace psd {
     bool readImageResources();
     bool readLayersAndMask();
     bool readImageData();
-
+    bool getSlices(const OSTypeDescriptor* desc, Slices &slices);
   private:
     bool readLayersInfo(LayersInformation& layers);
     bool readLayersInfo(const uint64_t length, LayersInformation& layers);
@@ -586,6 +626,8 @@ namespace psd {
     bool readLayerMLSTSection(LayerRecord& layerRecord);
     bool readLayerTMLNSection(LayerRecord& layerRecord);
     bool readLayerCUSTSection(LayerRecord& layerRecord);
+    bool readResourceSlicesV6();
+    bool readResourceSlices();
     uint64_t readAdditionalLayerInfo(LayerRecord& layerRecord);
     std::unique_ptr<OSTypeDescriptor> readAnimatedDataSection();
     std::unique_ptr<OSType> parseOsTypeVariable();

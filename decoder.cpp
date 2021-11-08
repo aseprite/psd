@@ -162,8 +162,7 @@ bool Decoder::readImageResources()
         if (descVersion == 16)
           res.descriptor = parseDescriptor();
       }
-      else if (resID == 4003) {
-        // This section is usually where the animation info is kept.
+      else if (resID == 4003) { // Animation frames information
         // Details of how it is parsed is in readAnimatedDataSection()
         read32(); // An unknown resource, name is written backward
         read32(); // Unknown block
@@ -175,6 +174,8 @@ bool Decoder::readImageResources()
             res.descriptor = readAnimatedDataSection();
         }
       }
+      else if (resID == 1050) // Slices
+        readResourceSlices();
       else {
         res.data.resize(resLength);
         m_file->read(&res.data[0], resLength);
@@ -260,6 +261,156 @@ std::unique_ptr<OSTypeDescriptor> Decoder::readAnimatedDataSection()
   if (m_delegate)
     m_delegate->onFramesData(frameInfoList, activeFrameIndex);
   return desc;
+}
+
+Bound extract_bound(const OSTypeDescriptor* descriptor)
+{
+  if (!descriptor)
+    return Bound();
+
+  auto& boundsDescriptor = descriptor->descriptor;
+  auto bottomPtr = boundsDescriptor.getValue<OSTypeInt>("Btom");
+  auto leftPtr = boundsDescriptor.getValue<OSTypeInt>("Left");
+  auto rightPtr = boundsDescriptor.getValue<OSTypeInt>("Rght");
+  auto topPtr = boundsDescriptor.getValue<OSTypeInt>("Top ");
+
+  if (!(bottomPtr && leftPtr && rightPtr && topPtr))
+    return Bound();
+
+  Bound bound;
+  bound.bottom = bottomPtr->numberValue();
+  bound.left = leftPtr->numberValue();
+  bound.right = rightPtr->numberValue();
+  bound.top = topPtr->numberValue();
+  return bound;
+}
+
+bool Decoder::getSlices(const OSTypeDescriptor*desc, Slices& sliceData)
+{
+  if (!desc)
+    return false;
+
+  auto& sliceDescriptors = desc->descriptor;
+  const auto slices = sliceDescriptors.getValue<OSTypeList>("slices");
+  const auto sliceName = sliceDescriptors.getValue<OSTypeString>("baseName");
+  const auto rootBounds = sliceDescriptors.getValue<OSTypeDescriptor>("bounds");
+  if (!(sliceName && rootBounds && slices))
+    return false;
+
+  sliceData.groupName = sliceName->value;
+  sliceData.bound = extract_bound(rootBounds);
+
+  for (const auto& slice : slices->values) {
+    const auto sliceDescRoot = slice->as<OSTypeDescriptor>();
+    const DescriptorMap& sliceDesc = sliceDescRoot->descriptor;
+    // some fields are available in v7/8 descriptor that are not in v6
+    // or have non-compatible types as in v6, they've been left out.
+    const auto altTag = sliceDesc.getValue<OSTypeString>("altTag");
+    const auto cellText = sliceDesc.getValue<OSTypeString>("cellText");
+    const auto groupID = sliceDesc.getValue<OSTypeInt>("groupID");
+    const auto sliceID = sliceDesc.getValue<OSTypeInt>("sliceID");
+    const auto url = sliceDesc.getValue<OSTypeString>("url");
+    const auto sliceBoundsDesc = sliceDesc.getValue<OSTypeDescriptor>("bounds");
+    const auto messagePtr = sliceDesc.getValue<OSTypeString>("Msge");
+    const auto cellTextIsHTML = sliceDesc.getValue<OSTypeBoolean>("cellTextIsHTML");
+
+    SliceKey sliceKey;
+    if (sliceBoundsDesc)
+      sliceKey.bound = extract_bound(sliceBoundsDesc);
+    if (messagePtr)
+      sliceKey.message = messagePtr->value;
+    if (altTag)
+      sliceKey.altTag = altTag->value;
+    if (cellText)
+      sliceKey.celText = cellText->value;
+    if (cellTextIsHTML)
+      sliceKey.celTextIsHTML = cellTextIsHTML->value;
+    if (groupID)
+      sliceKey.groupID = groupID->value;
+    if (sliceID)
+      sliceKey.sliceID = sliceID->value;
+    if (url)
+      sliceKey.url = url->value;
+
+    sliceData.sliceKeys.emplace_back(std::move(sliceKey));
+  }
+
+  return true;
+}
+
+bool Decoder::readResourceSlices()
+{
+  const uint32_t version = read32(); // 6, 7 or 8
+  if (version < 6 || version > 8)
+    return false;
+
+  if (version == 6)
+    return readResourceSlicesV6();
+  // version 7 and 8
+  const uint32_t descVersion = read32();
+  if (descVersion != 16)
+    return false;
+
+  const auto desc = parseDescriptor();
+  Slices slices;
+  if (!getSlices(desc.get(), slices))
+    return false;
+
+  if (m_delegate)
+    m_delegate->onSlicesData(slices);
+  return true;
+}
+
+bool Decoder::readResourceSlicesV6()
+{
+  Slices sliceData;
+  sliceData.bound.top = read32();
+  sliceData.bound.left = read32();
+  sliceData.bound.bottom = read32();
+  sliceData.bound.right = read32();
+  sliceData.groupName = getUnicodeString();
+
+  const uint32_t nSlices = read32();
+  if (nSlices)
+    sliceData.sliceKeys.reserve(nSlices);
+  for (int i = 0; i < nSlices; ++i) {
+    SliceKey sliceKey;
+    sliceKey.assocLayerID = 0;
+
+    sliceKey.sliceID = read32();
+    sliceKey.groupID = read32();
+    sliceKey.origin = read32();
+    if (sliceKey.origin == 1)
+      sliceKey.assocLayerID = read32();
+    sliceKey.name = getUnicodeString();
+    sliceKey.type = read32();
+    sliceKey.bound.left = read32();
+    sliceKey.bound.top = read32();
+    sliceKey.bound.right = read32();
+    sliceKey.bound.bottom = read32();
+    sliceKey.url = getUnicodeString();
+    sliceKey.target = getUnicodeString();
+    sliceKey.message = getUnicodeString();
+    sliceKey.altTag = getUnicodeString();
+    sliceKey.celTextIsHTML = read8();
+    sliceKey.celText = getUnicodeString();
+    sliceKey.horizontalAlignment = read32();
+    sliceKey.verticalAlignment = read32();
+    sliceKey.alpha = read8();
+    sliceKey.red = read8();
+    sliceKey.green = read8();
+    sliceKey.blue = read8();
+
+    sliceData.sliceKeys.push_back(std::move(sliceKey));
+  }
+
+  const uint32_t descVersion = read32();
+  if (descVersion == 16)
+    sliceData.desc = parseDescriptor();
+
+  if (m_delegate)
+    m_delegate->onSlicesData(sliceData);
+  return true;
 }
 
 // TODO: what to do with the data read in this segment?
