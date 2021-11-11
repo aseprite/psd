@@ -442,7 +442,7 @@ namespace psd {
     uint32_t right = 0;
   };
 
-  struct SliceKey {
+  struct Slice {
     uint32_t sliceID = 0;
     uint32_t groupID = 0;
     uint32_t origin = 0;
@@ -467,7 +467,7 @@ namespace psd {
   struct Slices {
     Bound bound;
     std::wstring groupName;
-    std::vector<SliceKey> sliceKeys;
+    std::vector<Slice> slices;
     // PS 7.0 added a descriptor at the end of the block.
     // If available, user may use `Decoder::getSlices()` to
     // decode this data and get a `SliceData` object from it

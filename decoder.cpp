@@ -300,8 +300,8 @@ bool Decoder::getSlices(const OSTypeDescriptor* desc, Slices& sliceData)
   sliceData.groupName = sliceName->value;
   sliceData.bound = extract_bound(rootBounds);
 
-  for (const auto& slice : slices->values) {
-    const auto sliceDescRoot = slice->as<OSTypeDescriptor>();
+  for (const auto& sliceItem : slices->values) {
+    const auto sliceDescRoot = sliceItem->as<OSTypeDescriptor>();
     const DescriptorMap& sliceDesc = sliceDescRoot->descriptor;
     // some fields are available in v7/8 descriptor that are not in v6
     // or have non-compatible types as in v6, they've been left out.
@@ -314,25 +314,25 @@ bool Decoder::getSlices(const OSTypeDescriptor* desc, Slices& sliceData)
     const auto messagePtr = sliceDesc.getValue<OSTypeString>("Msge");
     const auto cellTextIsHTML = sliceDesc.getValue<OSTypeBoolean>("cellTextIsHTML");
 
-    SliceKey sliceKey;
+    Slice slice;
     if (sliceBoundsDesc)
-      sliceKey.bound = extract_bound(sliceBoundsDesc);
+      slice.bound = extract_bound(sliceBoundsDesc);
     if (messagePtr)
-      sliceKey.message = messagePtr->value;
+      slice.message = messagePtr->value;
     if (altTag)
-      sliceKey.altTag = altTag->value;
+      slice.altTag = altTag->value;
     if (cellText)
-      sliceKey.celText = cellText->value;
+      slice.celText = cellText->value;
     if (cellTextIsHTML)
-      sliceKey.celTextIsHTML = cellTextIsHTML->value;
+      slice.celTextIsHTML = cellTextIsHTML->value;
     if (groupID)
-      sliceKey.groupID = groupID->value;
+      slice.groupID = groupID->value;
     if (sliceID)
-      sliceKey.sliceID = sliceID->value;
+      slice.sliceID = sliceID->value;
     if (url)
-      sliceKey.url = url->value;
+      slice.url = url->value;
 
-    sliceData.sliceKeys.emplace_back(std::move(sliceKey));
+    sliceData.slices.emplace_back(std::move(slice));
   }
 
   return true;
@@ -372,36 +372,36 @@ bool Decoder::readResourceSlicesV6()
 
   const uint32_t nSlices = read32();
   if (nSlices)
-    sliceData.sliceKeys.reserve(nSlices);
+    sliceData.slices.reserve(nSlices);
   for (int i = 0; i < nSlices; ++i) {
-    SliceKey sliceKey;
-    sliceKey.assocLayerID = 0;
+    Slice slice;
+    slice.assocLayerID = 0;
 
-    sliceKey.sliceID = read32();
-    sliceKey.groupID = read32();
-    sliceKey.origin = read32();
-    if (sliceKey.origin == 1)
-      sliceKey.assocLayerID = read32();
-    sliceKey.name = getUnicodeString();
-    sliceKey.type = read32();
-    sliceKey.bound.left = read32();
-    sliceKey.bound.top = read32();
-    sliceKey.bound.right = read32();
-    sliceKey.bound.bottom = read32();
-    sliceKey.url = getUnicodeString();
-    sliceKey.target = getUnicodeString();
-    sliceKey.message = getUnicodeString();
-    sliceKey.altTag = getUnicodeString();
-    sliceKey.celTextIsHTML = read8();
-    sliceKey.celText = getUnicodeString();
-    sliceKey.horizontalAlignment = read32();
-    sliceKey.verticalAlignment = read32();
-    sliceKey.alpha = read8();
-    sliceKey.red = read8();
-    sliceKey.green = read8();
-    sliceKey.blue = read8();
+    slice.sliceID = read32();
+    slice.groupID = read32();
+    slice.origin = read32();
+    if (slice.origin == 1)
+      slice.assocLayerID = read32();
+    slice.name = getUnicodeString();
+    slice.type = read32();
+    slice.bound.left = read32();
+    slice.bound.top = read32();
+    slice.bound.right = read32();
+    slice.bound.bottom = read32();
+    slice.url = getUnicodeString();
+    slice.target = getUnicodeString();
+    slice.message = getUnicodeString();
+    slice.altTag = getUnicodeString();
+    slice.celTextIsHTML = read8();
+    slice.celText = getUnicodeString();
+    slice.horizontalAlignment = read32();
+    slice.verticalAlignment = read32();
+    slice.alpha = read8();
+    slice.red = read8();
+    slice.green = read8();
+    slice.blue = read8();
 
-    sliceData.sliceKeys.push_back(std::move(sliceKey));
+    sliceData.slices.push_back(std::move(slice));
   }
 
   const uint32_t descVersion = read32();
