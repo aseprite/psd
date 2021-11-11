@@ -263,7 +263,7 @@ std::unique_ptr<OSTypeDescriptor> Decoder::readAnimatedDataSection()
   return desc;
 }
 
-Bound extract_bound(const OSTypeDescriptor* descriptor)
+static Bound extract_bound(const OSTypeDescriptor* descriptor)
 {
   if (!descriptor)
     return Bound();
