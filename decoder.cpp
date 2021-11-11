@@ -285,7 +285,7 @@ static Bound extract_bound(const OSTypeDescriptor* descriptor)
   return bound;
 }
 
-bool Decoder::getSlices(const OSTypeDescriptor*desc, Slices& sliceData)
+bool Decoder::getSlices(const OSTypeDescriptor* desc, Slices& sliceData)
 {
   if (!desc)
     return false;

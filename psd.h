@@ -614,7 +614,8 @@ namespace psd {
     bool readImageResources();
     bool readLayersAndMask();
     bool readImageData();
-    bool getSlices(const OSTypeDescriptor* desc, Slices &slices);
+    bool getSlices(const OSTypeDescriptor* desc, Slices& slices);
+
   private:
     bool readLayersInfo(LayersInformation& layers);
     bool readLayersInfo(const uint64_t length, LayersInformation& layers);
