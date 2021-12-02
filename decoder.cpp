@@ -9,6 +9,7 @@
 #include "psd_details.h"
 
 #include <cinttypes>
+#include <cmath>
 #include <stdexcept>
 
 namespace psd {
@@ -997,6 +998,69 @@ uint64_t Decoder::read32or64Length()
   else
     length = read32();
   return length;
+}
+
+// TODO check if this works in all platforms, including arm64
+double Decoder::readDouble()
+{
+  unsigned char buff[8]{};
+  for (int i = 0; i < 8; ++i)
+    buff[i] = read8();
+
+  const int sign = buff[0] & 0x80 ? -1 : 1;
+  // exponent in raw format
+  const int exponent = ((buff[0] & 0x7F) << 4) | ((buff[1] & 0xF0) >> 4);
+
+  // read inthe mantissa. Top bit is 0.5, the successive bits half
+  int maski = 1, mask = 0x08;
+  double bitval = 0.5;
+  double fnorm = 0.0;
+  constexpr const int significantBits = 52;
+  for (int i = 0; i < significantBits; i++) {
+    if (buff[maski] & mask)
+      fnorm += bitval;
+
+    bitval /= 2.0;
+    mask >>= 1;
+    if (mask == 0) {
+      mask = 0x80;
+      maski++;
+    }
+  }
+  // handle zero specially
+  if (exponent == 0 && fnorm == 0)
+    return 0.0;
+
+  constexpr const int expbits = 11;
+  int shift = exponent - ((1 << (expbits - 1)) - 1); // exponent = shift + bias
+  // nans have exp 1024 and non-zero mantissa
+  if (shift == 1024 && fnorm != 0)
+    return sqrt(-1.0);
+  // infinity
+  if (shift == 1024 && fnorm == 0) {
+#ifdef INFINITY
+    return sign == 1 ? INFINITY : -INFINITY;
+#endif
+    return (sign * 1.0) / 0.0;
+  }
+
+  double answer = 0.0;
+  if (shift > -1023) {
+    answer = ldexp(fnorm + 1.0, shift);
+    return answer * sign;
+  }
+  else {
+    // denormalised numbers
+    if (fnorm == 0.0)
+      return 0.0;
+    shift = -1022;
+    while (fnorm < 1.0) {
+      fnorm *= 2;
+      shift--;
+    }
+    answer = ldexp(fnorm, shift);
+    return answer * sign;
+  }
 }
 
 std::string Decoder::readPascalString(const int alignment)

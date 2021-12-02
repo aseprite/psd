@@ -647,6 +647,7 @@ namespace psd {
     uint64_t read64();
     uint32_t read16or32Length();
     uint64_t read32or64Length();
+    double readDouble();
     std::string readPascalString(const int alignment);
 
     DecoderDelegate* m_delegate;

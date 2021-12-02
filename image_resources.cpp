@@ -318,11 +318,11 @@ std::unique_ptr<OSType> Decoder::parseOsTypeVariable()
       value = parseListType();
       break;
     case OSTypeKey::Double:
-      value.reset(new OSTypeDouble(read64()));
+      value.reset(new OSTypeDouble(readDouble()));
       break;
     case OSTypeKey::UnitFloat: {
       const uint32_t unit = read32();
-      const double v = read64();
+      const double v = readDouble();
       if (!is_valid_unit_float(unit))
         throw std::runtime_error(
           "invalid unit float in descriptor type");
