@@ -1,7 +1,7 @@
 # Aseprite PSD Library
-# Copyright (C) 2019-2021 Igara Studio S.A.
+# Copyright (C) 2019-2025 Igara Studio S.A.
 
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.15)
 
 project(psd CXX)
 
